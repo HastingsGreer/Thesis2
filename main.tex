@@ -1,0 +1,472 @@
+\documentclass{report}
+\usepackage{graphicx} % Required for inserting images
+\usepackage{tabularx}
+  \usepackage{listings} 
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{tikz}
+  \usepackage{nicefrac}
+  \usepackage{booktabs}
+  \usepackage{url}
+\usepackage{multirow}
+\usepackage{colortbl}
+\usepackage{pifont}
+\usepackage[most]{tcolorbox}
+\usepackage{array}
+\usetikzlibrary{arrows.meta, % if the figure contains arrow-tips
+                bending,     % arrow tips on arcs are "bent," i.e., deformed a bit
+                patterns     % if the figure contains pattern fills
+               }
+
+\usetikzlibrary{spy}
+\usetikzlibrary{arrows,shapes,automata,backgrounds,petri,positioning}
+\usetikzlibrary{decorations.pathmorphing}
+\usetikzlibrary{decorations.shapes}
+\usetikzlibrary{decorations.text}
+\usetikzlibrary{decorations.fractals}
+\usetikzlibrary{decorations.footprints}
+\usetikzlibrary{shadows}
+\usetikzlibrary{arrows.meta, % if the figure contains arrow-tips
+                bending,     % arrow tips on arcs are "bent," i.e., deformed a bit
+                patterns     % if the figure contains pattern fills
+               }
+
+\usetikzlibrary{spy}
+\usetikzlibrary{arrows,shapes,automata,backgrounds,petri,positioning}
+\usetikzlibrary{decorations.pathmorphing}
+\usetikzlibrary{decorations.shapes}
+\usetikzlibrary{decorations.text}
+\usetikzlibrary{decorations.fractals}
+\usetikzlibrary{decorations.footprints}
+\usetikzlibrary{shadows}
+\usetikzlibrary{arrows.meta, % if the figure contains arrow-tips
+                bending,     % arrow tips on arcs are "bent," i.e., deformed a bit
+                patterns     % if the figure contains pattern fills
+               }
+
+\usetikzlibrary{spy}
+\usetikzlibrary{arrows,shapes,automata,backgrounds,petri,positioning}
+\usetikzlibrary{decorations.pathmorphing}
+\usetikzlibrary{decorations.shapes}
+\usetikzlibrary{decorations.text}
+\usetikzlibrary{decorations.fractals}
+\usetikzlibrary{decorations.footprints}
+\usetikzlibrary{shadows}
+\usepackage{adjustbox}
+\usepackage{caption}
+
+  
+\graphicspath{{figs/}}
+
+\newcommand{\texorpdfstring}[1]{{#1}}
+
+
+\newcommand{\eg}{e.g.}
+\DeclareMathOperator{\convo}{Conv}
+\newcommand{\etal}{et. al.}
+\newcommand{\ie}{i.e.}
+\newcommand{\mn}[1]{{\color{black}{#1}}}
+\DeclareMathOperator{\id}{Id}
+\newcommand{\fxpsi}{\Phi_{\theta}^{BA}}
+\newcommand{\fxvarphi}{\Phi_{\theta}^{AB}}
+\newcommand{\fxpsivarepsilon}{\Phi_{\theta \varepsilon}^{BA}}
+\newcommand{\fxvarphivarepsilon}{\Phi_{\theta \varepsilon}^{AB}}
+\definecolor{ggreen}{HTML}{115740}
+\newcommand{\mathds}{\mathbb}
+\newcommand{\wrt}{with respect to}
+\newcommand{\coloneqq}{:=}
+
+\newcommand{\gradicon}{\texttt{GradICON}} 
+\newcommand{\lsim}{\mathcal{L}_{\text{sim}}} 
+\newcommand{\lreg}{\mathcal{L}_{\text{reg}}} 
+\newcommand{\lsimgicon}{\mathcal{L}_{\text{sim}}^{\texttt{GradICON}}} 
+\newcommand{\lsimicon}{\mathcal{L}_{\text{sim}}^{\texttt{ICON}}} 
+\newcommand{\lreggicon}{\mathcal{L}_{\text{reg}}^{\texttt{GradICON}}} 
+\newcommand{\lregicon}{\mathcal{L}_{\text{reg}}^{\texttt{ICON}}} 
+
+\newcommand{\real}[0]{\mathbb{R}}
+
+\newcommand{\ia}[0]{{I^\text{M}}}
+\newcommand{\ib}[0]{{I^\text{F}}}
+
+
+\title{Symmetries of the image registration problem and their application to learning based solutions}
+\author{Hastings Greer }
+\date{April 2024}
+
+\begin{document}
+
+\maketitle
+
+\section{Thesis Statement}
+Image registration is a problem where the correct solution has inherent symmetries. By formalizing this observation, and then restricting deep networks that solve the registration problem to have these same symmetries, we can boost performance and regularize, simplify, and accelerate training. 
+
+\section{Introduction}
+
+Image registration is a core tool for medical imaging studies. In my thesis, I
+seek to improve the performance of learning based approaches on this task
+through implementing losses and architectures for inverse consistency and equivariance. First, as a foundation, I am developing the
+notation for registration algorithms. By writing registration algorithms as
+operators, it becomes ergonomic to prove properties of these algorithms at the
+blackboard.
+With this notation, I analyze and exploit symmetries (inverse consistency and spatial
+equivariance) that the solution to the registration problem should have in
+order to regularize and accelerate training. Finally, we find that the models we have developed through this approach have a novel emergent ability: they can be trained on composite datasets from various parts of the body and modalities, and perform well on all while even generalizing to unseen organ systems. These registration foundation models are currently achieving high impact, and we seek to keep the wind behind this impact by continuing to improve performance.
+
+Practically, this thesis also serves as documentation for the ICON\_registration library, 
+
+%Second, I have developed and developing software that allows our production code to share notation and structure with our blackboard results. 
+\section{Notation}
+
+Careful development of notation is a fundamental component of progress in image
+registration, and one that is easily overlooked (and difficult to publish in
+conferences!)
+
+\subsection{Pre-existing Notation}
+The standard in the field of image registration is to describe loss functions
+such as similarity loss and regularization loss with typeset equations, but
+represent the registration algorithm itself using a flowchart.
+\cite{balakrishnan2019voxelmorph} Follows this pattern exactly, although the
+relatively simple internal structure of their approach means that there is
+little structure to capture with improved notation. Multistep architectures
+such as \cite{shen2019networks, mok2020large} use flowcharts along with prose
+to clarify ambiguities. The need for new notation comes into the forefront int
+LapIRN \cite{mok2020large} where there is significant Across these papers,
+there is the standard that the images are functions from a domain to
+intensities $I: \Omega \rightarrow \mathcal{R}$ and the transform is a function
+from the image domain to the image domain $\varphi: \Omega \rightarrow \Omega$.
+
+The canonical unsupervised registration loss in this notation is
+
+$$\mathcal{L}_\text{sim} = \text{Sim}(I^\text{moving} \circ  \varphi , I^\text{fixed}) $$
+
+(In about half of works in the literature, $\varphi$ is used to indicate the a map from the moving space to the fixed space, and then the map used in the similarity loss is written $\varphi^{-1}$ to indicate that the map is used to pull back the moving image features. In these works, $'\varphi'$ is never computed, so $\varphi^{-1}$ just becomes a long name for the pullback map. I have found that it is better to always talk about the pullback map from the fixed space to the moving space and denote it with a single Greek letter, as otherwise the equations always have $\square^{-1}$ dotted about in an unhelpful way, especially as writing it on every map slows whiteboard analysis, I want to use the superscript space for other information, and only including the inverse symbol sometimes is tremendously confusing.)
+
+\section{Registration algorithms, not maps, as the primary object of study}
+
+My central concept in notation is to describe registration algorithms $\Phi:
+	\left( (\Omega \rightarrow \mathcal{R}) \times (\Omega \rightarrow \mathcal{R})
+	\right) \rightarrow (\Omega \rightarrow \Omega) $. \footnote{Cyclemorph
+	\cite{cyclemorph} uses a similar notation, refering to the maps from moving to
+	fixed and fixed to moving as $\phi_{XY}$ and $\phi_{YX}$, but does not
+	elaborate that arbitrary expressions can be substituted for X and Y} These
+algorithms take in a pair of images, and return a map. Written with this
+notation, the unsupervised registration loss becomes
+
+$$ \mathcal{L}_\text{sim} = \text{Sim}(I^\text{moving} \circ  \Phi[I^\text{moving}, I^\text{fixed}] , I^\text{fixed}) $$
+
+By focusing on the properties of registration algorithms $\Phi$ instead of maps
+$\varphi$, it becomes easy to succinctly describe symmetries of these
+algorithms, and to regularize how the transform varies as images change,
+instead of just how the transform varies in space.
+
+As an example, one of the simplest regularization losses based on a symmetry is
+to require that the registration algorithm be symmetric.
+%One of the early works advocating this approach for image registration is CycleMorpah.
+
+
+In my notation, the inverse consistency loss can be written succinctly and
+unambiguously as
+
+$$ \mathcal{L}_{inv} = ||\Phi[I^A, I^B] \circ \Phi[I^B, I^A] - id||^2_2$$
+
+\subsection{Parallelism of Notation and Code}
+
+$\Phi$ is a torch module, and we take seriously that it returns a function, not a tensor- it returns a python function that maps tensors of coordinates to tensors of coordinates. We have developed a novel python library based on this principle. 
+
+For example, a typical simple definition of a convnet for registration $\Phi$ is 
+		$ \Phi_\theta[I^A, I^B](\vec{x}) := \text{Conv}_\theta[\text{cat}(I^A, I^B)](\vec{x}) + \vec{x} $
+
+In our library, this is a class with the following definition:
+
+\begin{verbatim}
+class FunctionFromVectorField(RegistrationModule):
+    """
+    Wrap an inner neural network 'net' that returns a tensor of displacements
+    [B x N x H x W (x D)], into a RegistrationModule that returns a function that
+    transforms a tensor of coordinates
+    """
+
+    def __init__(self, net):
+        super().__init__()
+        self.net = net
+
+    def forward(self, image_A, image_B):
+        tensor_of_displacements = self.net(image_A, image_B)
+        displacement_field = self.as_function(tensor_of_displacements)
+
+        def transform(coordinates):
+            return coordinates + displacement_field(coordinates)
+
+        return transform
+\end{verbatim}
+
+The direct correspondence between notation in publications and code in our open source libraries accelerates development. This library, developed in the course of this thesis, $\texttt{icon\_registration}$, has been downloaded 523 times in the past month from pypi.
+
+
+\section{Literature Review}
+
+\subsection{Unsupervised image registration.}
+In addition to prior work on equivariance, we also build on research into unsupervised image registration. The foundational concept~\cite{balakrishnan2019voxelmorph} driving this subfield is to predict deformations using a neural network. Training minimizes a similarity and a regularity loss. It is feasible to learn multiple steps of registration by simply penalizing the final similarity and regularity~\cite{shen2019networks, greer2021icon, tian2022}, even when the steps have different transform models~\cite{greer2023inverse, shen2019networks}. Diffeomorphisms can be guaranteed by special vector field integration layers~\cite{dalca2018unsupervised}, inversion layers~\cite{asymreg} or \emph{encouraged} by a loss, such as diffusion \cite{balakrishnan2019voxelmorph, shen2019networks}, or inverse consistency \cite{greer2021icon, tian2022}. Accuracy can be improved by learning features, computing cost volumes from the similarity between features in the fixed and moving images, and predicting a transform based on this cost volume: the final image similarity then is sufficient to learn good features~
+\cite{mok2020large}.
+
+\subsection{Distributable registration neural networks}
+
+Most current deep registration approaches are intended to be used by deciding on the task to be solved, and then training a model. Voxelmorph \cite{balakrishnan2019voxelmorph} has achieved great impact with this model, many other papers have achieved little impact despite improving on Voxelmorph's performance because experimenting with different registration networ
+
+There are several ongoing efforts to develop and distribute a neural network where the default mode of use is to download weights and then use them for your task, without performing training. The central attribute distinguishing this approach is that a paper 
+developing a distributable egistration network will evaluate their trained model on a different dataset than they trained it on. This gives an estimate of how it will perform on the customer's dataset.
+
+There are three main ways that a downstream registration task is likely to differ from the training set: Different organ system, different field of view, different imaging modality.
+
+SynthMorph\cite{SynthMorph} trained their network on synthetic brain images, and achieved high accuracy for brain images from a variety of datasets. They conquer different imaging modalities by broadening the imaging modalities in the training set to encompass the customer imaging modality. They punt on organ system by focusing on brain registration. They fail to address the issue of different field of view, requiring careful work by the customer to bring their data into the SynthMorph default field of view.
+
+EasyReg\cite{EasyReg} added common sense registration pipeline components to the SynthMorph model: built in brain extraction, robust affine pre-registration to an atlas coordinate system, built in intensity pre-processing. These serve to bring arbitrary brain image \emph{in distribution} to the existing SynthMorph model, allowing plug and play deformable brain registration. The result is an extremely pracitcal whole brain registration product.
+
+BrainMorph\cite{BrainMorph} takes a different tack to the field of view issue. By using the equivariance trick from KeyMorph\cite{KeyMorph}, their method's performance is independent of field of view. They approach the modality question largely by training on diverse modalities.
+
+\cite{uniGradICON} and \cite{multiGradICON} tackle the harder challenge of generalizing to arbitrary organ systems. The approach is to simply train on multiple organ systems. They also use this approach from field of view differences, using synthetic augmentation. MultiGradICON extends this to multiple modalities, both by incorporating many modalities in the training process and synthetically augmenting them. Finally, they close any train-test divergence using instance optimization.
+
+\subsection{Inverse Consistent deep registration methods}
+
+Inverse consistency in deep image registration approaches is commonly promoted 
+via a penalty~\cite{greer2021icon,shen2019networks,jun2018ICNet,Nazib2021Cnn}
+on the inverse consistency error. Extensive work also exists on
+optimization-based \emph{exactly} inverse consistent image registration. For example, by using a symmetric image similarity measure and an inverse consistency loss on the transformations~\cite{christensen2001consistent} or by performing robust inverse consistent rigid registrations with respect to a middle space~\cite{REUTER20101181}.
+% Christensen and Johnson~\cite{christensen2001consistent} introduce a symmetric
+% image similarity measure and an inverse consistency loss on the
+% transformations. Reuter et al.~\cite{REUTER20101181} perform robust inverse
+% consistent rigid registration by performing all comparisons in a middle space,
+% reached by applying a deformation and its inverse to the two images to be registered, and
+% carefully symmetrically optimizing the parameters of this deformation. This
+% approach is used in FreeSurfer. 
+ANTs SyN~\cite{avants2008symmetric} is an
+approach to inverse consistent deformable registration, but by default is part
+of a multi-step affine then SyN pipeline which is not as a whole inverse
+consistent. %The most famous of these approaches is ANTs SyN~\cite{avants2008symmetric}. %introduced a multi-step, multi-resolution registration process where similarity computation occurs in the middle space between two images, which results in inverse consistency. 
+
+%This is related to our approach for multi-step
+%inverse consistent registration, as we input images from the 'middle' space
+%into our 'second step' neural network using the TwoStepConsistent operator,
+%but we compute similarity only in the space of the fixed image.
+
+\vskip0.5ex
+Mok \emph{et al.}~\cite{Mok_2020_CVPR} introduce a deep-learning framework that is
+exactly inverse consistent. They
+take advantage of the fact that a stationary velocity field (SVF) transform representation allows for
+fast inversion of a transform by integrating the negated velocity
+field. Thus, by calling their network twice, the second time with the inputs
+reversed, they can construct a transform $\Phi^{AB} = \exp(N_\theta[I^A, I^B])
+	\circ \exp(-N_\theta[I^B, I^A])$. This registration network is
+inverse-consistent by construction, but only supports one step. \emph{Our approach will provide a general inverse consistent multi-step framework.}
+%Our construction applied to stationary velocity
+%field registration results in a slightly different one-step registration
+%network $\Phi^{AB} = exp(N_\theta[I^A, I^B] -N_\theta[I^B, I^A])$ with the
+%same property. Our principle advancement over Mok \emph{et al.} is the
+%introduction of an operator for chaining one-step registration networks into a
+%multistep registration network while maintaining exact inverse consistency.
+
+\vskip0.5ex
+Iglesias \emph{et al.}~\cite{iglesias2023easyreg} introduce a two-step deep registration framework for brain registration that is
+inverse consistent by construction. First, they
+independently segment each image with a U-Net into 97 anatomical regions. The centroids of
+these regions and the corresponding regions of an atlas are then used to obtain an affine transformation to the atlas. This is inverse consistent.
+Second, each brain image is resampled to the atlas
+space followed by an SVF-based transformation, where the velocity field is obtained by two calls to their velocity field network: $\exp(N_\theta[I^A, I^B] - N_\theta[I^B, I^A])$. This symmetrization retains inverse consistency and is conceptually similar to our approach. \emph{However, their approach, unlike ours,  does not directly extend to $N$ steps and is not trained end to end.}
+%This two-step process improves performance over a one-step approach. 
+%\emph{Our approach is end to end and provides a general framework for $N$ step inverse consistent registration.}% provides a general principle for $N$ However, unlike our proposed approach the approach by Iglesias \emph{et al.} is not directly extendable to $N$ steps and is not trained-end-to-end.}
+%They
+%accelerate the training of this deformable step by initializing the network
+%weights to those of a pretrained non-inverse-consistent SVF network with the
+%weights of the output convolution divided by 2. This two-step process improves
+%\vskip0.5ex
+%There is extensive literature on deep multi-step approaches. The core idea
+%is to conduct the registration in multiple steps with the warped image
+%produced by the previous step being the input to the latter step. Thus, the
+%original input image pairs can be registered progressively. AVSM
+%\cite{shen2019networks} achieves this by reusing the same neural network at each
+%step. Other works in the literature~\cite{mok2020large,greer2021icon,lin2022GradICON}
+%setup different neural networks at each step. In addition, these steps are often conducted in a coarse-to-fine manner. Namely, the neural network at the current
+%step registers the input images at a coarse resolution, interpolates the
+%output deformation field to a finer resolution, composes the interpolated
+%deformation field with the composed transformation from previous steps, warps
+%the moving image at the finer resolution, and passes the warped image and target
+%image to the neural network at next step.
+%Greer \emph{et al.} and Tian \emph{et al.}~\cite{greer2021icon,lin2022GradICON} define an abstract \texttt{TwoStep} operator to represent the process described above. However, this \texttt{TwoStep} operation does not guarantee inverse consistency between
+%the \emph{composed} forward transformation and the \emph{composed} backward
+%transformation.%, given that the output forward and backward transformations of each step are inverse consistent. 
+%\emph{To address this issue, we propose a novel operator for multi-step registration to obtain inverse consistent registration by construction.}
+%
+\subsection{Equivariant Deep Registration Methods}
+
+
+We review related work at the intersection of equivariance (and how to achieve it) and image registration, as well as previous work on unsupervised learning of neural networks for image registration.  
+
+\vskip0.5ex
+\noindent
+\textbf{Equivariant encoders.}
+%The literature has a wonderful diversity of equivariant feature encoders. 
+The most impactful equivariant layers in the field of neural networks have been ordinary convolution \cite{fukushimaneocognitronbc} and attention \cite{parikh-etal-2016-decomposable}, which are equivariant to translation and permutation,  respectively. In this work, we focus on using attention and convolution to make a registration algorithm that is by construction $[W, U]$ equivariant to translation. However, there are also more recent approaches to create components with additional geometric equivariances such as to rotation. These include group equivariant convolution
+\cite{cohen2016group}, StyleGAN's equivariant convolution \cite{karras2021alias}, and spherical harmonic convolution \cite{moyer2021equivariant}. These
+should be explored in future work to expand the deformations with respect to
+which our approach (based on what we call \emph{coordinate attention}, see Sec.~\ref{sec:coordinate_attention_block})  is $[W, U]$ equivariant.
+
+\vskip0.5ex
+\noindent
+\textbf{Keypoint-based equivariant registration architectures.}
+Several registration approaches relying on keypoint matching have been proposed~\cite{Lowe2004DistinctiveIF, SURF}. Notably, any approach that aligns keypoints to keypoints using a least squares fit is $[W, U]$ equivariant to rigid motions if the keypoint selectors and descriptors are equivariant to rigid motions. The reason can be derived from the notion of equivariance as follows: \emph{if two points correspond before warping the input images, they should correspond afterwards}. The keypoints align with each other before and after a warp is applied, and move with features on the input images when they are warped. SURF \cite{SURF} and related methods fall under this category in the subfield of non-learning-based 2D image alignment. For medical image registration, learning-based approaches that leverage keypoints include EasyReg \cite{iglesias2023ready}, Keymorph \cite{Yu22a}, SAME++ \cite{Tian2023SAMEAS} and E-CNN \cite{billot2023equivariant}. 
+SAME++ \cite{Tian2023SAMEAS} uses a pretrained foundation model as a convolutional encoder, and extracts matched keypoints from it using methods traditionally used in 2D image feature alignment, such as checking for cycle consistency. This alignment is then refined using a trained deep network with overall strong performance on lung, abdomen, and head/neck computed tomography (CT) registration tasks.
+EasyReg, E-CNN and Keymorph achieve equivariant registration by locating a fixed set of keypoints in each image and aligning matching keypoints.
+EasyReg's \cite{iglesias2023ready} affine pre-registration is by construction $[W,U]$ equivariant to affine deformations because it works by segmenting the brain images to be registered, and then bringing the centroids of the segmented regions into alignment. In effect, this uses each segmented region as a keypoint. In our experiments (see Sec.~\ref{sec:experiments}) we will see that this strategy works well even for out-of-distribution translations, and exhibits strong performance when detailed segmentations are available for training. In the KeyMorph work of \cite{Wang2023ARA}, equivariance is achieved in an unsupervised setting by learning to predict keypoints in brain images. Unlike SURF and related approaches, KeyMorph avoids the need for a matching step by predicting keypoints in a fixed order. Finally, in the E-CNN work of \cite{billot2023equivariant}, the authors leverage a rotationally equivariant encoder built using spherical harmonics to predict features, and the centers of mass of each feature channel are then used as keypoints and rigidly aligned in a differentiable manner. The network is trained by warping a single image with two different transforms and then penalizing the difference between the network output and the transform used to generate the pair.
+
+%Unlike existing methods, we in some sense have a dense collection of keypoints instead of sparse: this means we don't have to pick a transformation model on top of them. (Keymorph has 128 keypoints, Same++ has <5000, we have ~80,000)
+
+\vskip0.5ex
+\noindent
+\textbf{Equivariance losses.} Several works aim for equivariance via suitably designed loss terms. In the CoMIR work of \cite{Nordling2023ContrastiveLO}, for instance, the authors train an image encoder to be equivariant to rotations and deformations using an unsupervised contrastive loss with additional constraints. 
+%, and then use those encoder features within a loss to numerically optimize B-Spline or affine transforms to perform alignment. 
+%They achieve strong performance on 2-D image registration problems, especially in multimodal settings. %discusses equivariant image representations heavily. Could be good to
+%compare against. Is by far the most influential existing equivariant
+%registration work. 
+%In \cite{Honkamaa2022DeformationEC} a registration network is trained as part of an image synthesis network that is made equivariant by losses. % We probably do not need to cite this, tangentially relevant.
+Furthermore, the concept of $W$-bipath consistency, introduced in \cite{Truong_2021_ICCV}, is effectively a penalty to encourage the $[W, U]$ equivariance to B-Spline transforms. In particular, \cite{Truong_2021_ICCV} uses penalties to enforce that $\Phi[I^M, I^F \circ U] = \Phi[I^M, I^F] \circ U$ as well as inverse consistency, which together are sufficient conditions for $[W, U]$ equivariance. While this is undoubtedly useful for training (as it is equivariance enforced by a loss), it is not likely to hold for out-of-distribution data, unlike our approach which is \emph{by construction} $[W,U]$ equivariant.% (see Sec.~\ref{sec:experiments}). 
+%They achieve strong performance in the setting of 2-D natural images.
+
+%\subsection{Inverse Consistency}
+%
+%The most popular equivariance of registration to exploit is of course an equivariance
+%with respect to the order 2 finite group, specifically inverse consistency (of course, it is not normally thought of as such). There has been
+%rapid progress recently in moving from algorithms that are inverse consistent
+%via a penalty \cite{zhang2018inverse, tian2022} to algorithms
+%that are inverse consistent as a consequence of their architecture
+%\cite{greer2023inverse, asymreg, iglesias2023ready}. Our approach,
+%while [W, U] equivariant to translation by construction, is only approximately inverse
+%consistent by a penalty: specifically we use the GradICON regularizer
+%\cite{tian2022} to strongly encourage both regularity and inverse consistency.
+
+
+
+
+\section{Components of the Thesis already published}
+
+\subsection{ICON}
+%\begin{abstract}
+%
+%	Learning maps between data samples is fundamental. Applications range from
+%	representation learning, image translation and generative modeling, to the
+%	estimation of spatial deformations. Such maps relate feature vectors, or map
+%	between feature spaces. Well-behaved maps should be regular, which can be
+%	imposed explicitly or may emanate from the data itself. We explore what induces
+%	regularity for spatial transformations, e.g., when computing image
+%	registrations. Classical optimization-based models compute maps between pairs
+%	of samples and rely on an appropriate regularizer for well-posedness. Recent
+%	deep learning approaches have attempted to avoid using such regularizers
+%	altogether by relying on the sample population instead. We explore if it is
+%	possible to obtain spatial regularity using an inverse consistency loss only
+%	and elucidate what explains map regularity in such a context. We find that deep
+%	networks combined with an inverse consistency loss and randomized off-grid
+%	interpolation yield well behaved, approximately diffeomorphic, spatial
+%	transformations. Despite the simplicity of this approach, our experiments
+%	present compelling evidence, on both synthetic and real data, that regular maps
+%	can be obtained without carefully tuned explicit regularizers, while achieving
+%	competitive registration performance.%and only marginal degradation in registration performance.
+%\end{abstract}
+
+It is well known that image registration models should be inverse consistent. The first three papers of my thesis have involved exploiting this property. The first publication, ICON \cite{greer2021icon}, proved the claim that a standard inverse consistency loss is sufficient to make an ordinary network that predicts
+
+The first publication of the thesis, \cite{greer2021icon}, was focused on a novel approach to regularizing image registration: optimizing for inverse consistency and then getting regularity as a side effect. This approach only had one hyperparameter, which was aspirationally could allow training on a new dataset with less tuning needed than multigaussian regularizers, which have may hyperparameters to manually adjust. This publication introduced the "Registration Network" notation, including explicity denoting the input images to the registration network, and the operators TwoStep and Downsample that allow hierarchical multistep registration networks to be constructed.
+
+In this work, we also developed and published the library $\texttt{icon\_registration}$, upon which the software for all following papers in the thesis as been build.
+\subsection{GradICON}
+
+With ICON we had a strong suspicion that policing the diffeomorphic status of the transform via the inverse consistency error was an excellent idea, as yielded smooth diffeomorphic maps without penalizing large deformations. The ICON formulation had issues in practice because it behaved differently at different resolutions of the displacement field, and fell apart particularly for high resolutions.
+Lin Tian and I simultaneously independently discovered that this can be ameliorated by penalizing the gradient of the inverse consistency error instead of the error directly. This lead to a large reduction in transform irregularity and increase in convergence speed. This GradICON regularizer appears to dominate ICON regularization, diffusion regularization, and bending energy regularization for any desired level of transform regularity. We submitted this as a joint first author paper to CVPR 2022. 
+
+	We achieve state-of-the-art registration
+	performance on a variety of real-world medical image datasets using a single
+	set of hyperparameters and a single non-dataset-specific training protocol.
+
+This paper fulfilled the promise of the ICON paper that an inverse consistency
+based regularizer could be easier to tune than existing approaches.
+
+\subsection{ConstrICON}
+
+
+	Inverse consistency is a desirable property for image registration. GradICON produced high quality approximately inverse consistent transforms, but there are still some tasks like atlas building where exactly inverse consistent transforms are needed. In ConstrICON
+\cite{Greer2023InverseCB}, we proposed
+	a simple technique to make a neural registration network inverse consistent by
+	construction, as a consequence of its structure, as long as it parameterizes
+	its output transform by a Lie group. We extended this technique to multi-step
+	neural registration by composing many such networks in a way that preserves
+	inverse consistency. This multi-step approach also allows for
+	inverse-consistent coarse to fine registration. We evaluate our technique on
+	synthetic 2-D data and four 3-D medical image registration tasks and obtain
+	excellent registration accuracy while assuring inverse consistency.%, ie coarse to fine, 
+
+
+Here, we begin to see the power of registration network notation for formally
+proving properties of multistep registration algorithms.
+\section{Ongoing work and plan for the Thesis}
+
+\subsection{Coordinate Attention with Refinement Layers}
+
+A desirable property of image registration algorithms is that a correspondence estimate (e.g., the true oracle correspondence) for an image pair is maintained under deformations of the input images. Formally, the estimator should be equivariant to a desired class of image transformations. In "Coordinate Attention with Refinement Layers", I  present careful analyses of the desired equivariance properties in the context of multi-step deep registration networks. Based on these analyses I 1) introduce the notions of $[U,U]$ equivariance (network equivariance to the \emph{same} deformations of the input images) and $[W,U]$ equivariance (where input images can undergo \emph{different} deformations); we 2) show that in a suitable multi-step registration setup it is sufficient for overall $[W,U]$ equivariance if the first step has $[W,U]$ equivariance and all others have $[U,U]$ equivariance; we 3) show that common displacement-predicting networks only exhibit $[U,U]$ equivariance to translations instead of the more powerful $[W,U]$ equivariance; and we 4) show how to achieve multi-step $[W,U]$ equivariance via a coordinate-attention mechanism combined with displacement-predicting refinement layers (CARL). Overall, our approach obtains excellent practical registration performance on several 3D medical image registration tasks and outperforms existing unsupervised approaches for the challenging problem of abdomen registration.
+
+This paper continues the theme of calculating properties of multistep
+registration networks by manipulating registration network notation.
+
+I have submitted CARL to Neurips 2024 and am awaiting a response. If it is
+rejected, I plan to resubmit to CVPR. For the resubmission, I will add in the 2nd step of training from the GradICON paper to see if this boosts performance, and increase the number of evaluation pairs on the Abdomen1k dataset to 200.
+
+The CVPR submission deadline is in November, but I intend to make these changes after the October 10th ISBI deadline.
+
+\subsection{Pursuit of Rotational equivariance}
+
+The ICON paper left open the issue of convergence speed and a rapidly escalating regularization hyperparameter, and solving this led to the successful GradICON result. Likewise, the CARL result leaves open the question of rotational equivariance, and solving this open question is an attractive topic for follow on research. I will attempt three routes towards developing a general unsupervised registration architecture with built in [W, U] equivariance to a class of transforms including rotation.
+
+\begin{itemize}
+	\item The Keymorph architecture has unimpressive performance but full rotation equivariance. By our construction, a hybrid keymorph-with-refinement-layers architecture could be made to have full rotational equivariance with the performance bonus of a multi-step method. This would have the downside of precluding a general uniGradICON like model, as the keypoints would be organ-specific. This would also allow fully factoring out the deformation 
+
+	\item The CARL model should have rotational equivariance if an appropriately invariant feature encoder is used in the coordinate attention block. This was architecture was not used in CARL due to training instability, but I will make an attempt to resolve this by initializing a rotationaly equivariant CARL model using known transforms, following the Keymorph training procedure.
+
+	\item There are hints that the processes of instance optimization and iteration of the TwoStep operator are inherently equivariant. These hints will be fleshed out into formal proofs, and if these proofs suggest an architecture, this will be pursued.
+\end{itemize}
+
+I will evaluate these approaches on the task of atlas generation for the OAI dataset, and submit this atlas building approach as a four page paper to ISBI, with deadline October 11th.
+
+\subsection{Similarity Measure investigation, and Registration Foundation Models}
+
+The final paper that I aim to produce in this thesis is an extension of the sequence uniGradICON and multiGradICON. These two papers, which I helped to coauthor, developed a foundation model based on the GradICON architecture and training procedure, which is general- the same model is used across different data sets. In the HugeGradICON paper I will scale both the dataset diversity and model size- this is of course what you do with a foundation model. Where the "Equivariance of Iterated Registration Steps" Paper leans heavily toward methodological novelty and mathematical tricks, the HugeGradICON paper will be entirely practical, aiming to boost the performance of the approach on the kinds of cases that it is being used on in the wild. We have a unique opportunity to learn about its real world useage from github issues:
+
+Users will use the registration tool on non-brain-extracted images. The model needs to either enforce brain extraction for brain registration, as is done in EasyReg \cite{easyReg}, or perform adequadely when brain extraction is not performed. We will augment the training set with non-brain-extracted images, and test performance without brain extraction, and add an open source brain extraction model to the CLI if performance without it is not adequate.
+
+In addition, I will use the label image / input image distinction and randomization strategy introduced in MultiGradICON to attempt to boost registration performance on non-brain-extracted images, by sometimes running the model on the brain extracted image but evaluating the loss on the full head image, and vice versa.
+
+Users do not always have access to original images before resampling. Therefore, our model needs to accurately register images that have black bars introduced by the resampling procedure. To achieve this, I will use the "Label image" / "Input" image distinction again, by only adding black bars to the network input image, but not the image on which the loss is evaluated.
+
+Multimodal registration is necessary. The multiGradICON research has found that adding multimodal registration to the training set does improve performance on multimodal tasks, but harms performance on unimodal tasks. This should be amelioriated by increasing network capacity. I intend to further boost multimodal registration performance by adding SynthMorph shapes and brains datasets to the composite dataset.
+
+Finally, for some tasks rotational equivariance or exact inverse consistency are required, and these properties
+we will experiment with replacing the GradICON backbone with the ConstrICON and CARL backbones.
+
+All performance will be evaluated on the tasks used for GradICON, uniGradICON and multiGradICON, allowing easy comparison to current state of the art.
+
+This work will be my focus after the november resubmission of the CARL paper, and I intend to submit HugeGradICON to MICCAI in March 2025.
+
+\chapter{ICON}
+\input{chapters/ICON.tex}
+%\input{chapters/ICON_supp.tex}
+\chapter{GradICON}
+\input{chapters/GradICON.tex}
+%\input{chapters/GradICON_supp.tex}
+\chapter{ConstrICON}
+\input{chapters/ConstrICON.tex}
+
+\chapter{CARL}
+\input{chapters/CARL.tex}
+%\input{chapters/CARL_supp.tex}
+
+\bibliographystyle{plain}
+\bibliography{references}
+
+\end{document}
