@@ -1,0 +1,555 @@
+
+
+
+\begin{figure*}[tp!]
+    \centering
+    \includegraphics[width=.96\textwidth]{Figures/unknown.png}
+    \includegraphics[width=.43\textwidth]{Figures/box_label.png}
+    \caption{Per structure DICE scores on the HCP dataset. CARL ranks well on most structures.}
+    \label{fig:box_hcp}
+\end{figure*}
+\begin{figure*}[tp!]
+    \centering
+    \includegraphics[width=.96\textwidth]{Figures/abdomen_box.png}
+    \includegraphics[width=.43\textwidth]{Figures/Abdomen_legent.png}
+    \caption{Per structure DICE scores on the Abdomen1k dataset. We observe that CARL is dramatically ahead of competing methods on liver, kidney, and spleen registration, but performs meaninfully worse than Voxelmorph on the pancreas.}
+    \label{fig:box_abd}
+\end{figure*}
+
+\section{Per Structure DICE Box Plot}
+To provide a more comprehensive picture of how different registration algorithms perform for different brain structures or organs (instead of purely reporting averages) Figs.~\ref{fig:box_hcp} and~\ref{fig:box_abd} show anatomy-specific boxplots. We observe especially strong performance for CARL on the Abdomen1k dataset (Fig.~\ref{fig:box_abd}) with excellent registration results for liver, kidney, and spleen. 
+
+\section{Resolution, Downsampling \& Coordinates}
+\label{downsample}
+
+We use an internal convention that regardless of resolution, images have coordinates ranging from (0, 0, 0) to (1, 1, 1). Thus, a transform, a function from $[0, 1]^D \rightarrow \mathcal{R}^N$, can be applied to an image of any resolution. This allows us to construct a multiresolution, multi-step registration algorithm using TwoStep and the operator Downsample defined in \cite{greer2021icon} as
+\begin{align}
+&\text{Downsample}\{\Phi\}[\ia, \ib] \nonumber \\
+&= \Phi[ \text{averagePool}(\ia, 2), \text{averagePool}(\ib, 2)]\,. \\
+&\text{TwoStep}\{\Phi, \Psi\}[I^M, I^F] \nonumber \\ &= \Phi[I^M, I^F] \circ \Psi[I^M \circ \Phi[I^M, I^F], I^F]\,.\end{align}
+
+\section{Implementing the diffeomorphism-to-diffeomorphism case}
+\label{subsection:xinetimplementation}
+
+We can use coordinate attention to solve the diffeomorphism-to-diffeomorphism registration problem with a neural network $\Xi_\mathcal{F}$ (shown in the left part of Fig.~\ref{xinet}).
+
+%$\Xi_\mathcal{F}$: an implementation of $\Xi$ using standard neural network components}
+
+\begin{figure*}[htp]
+    \centering
+    %\includegraphics[width=.8\columnwidth]
+ %{Figures/AnalyticalRegTransformer/closed form registration.drawio-1.pdf}
+    \includegraphics[width=.5\textwidth]{Figures/AnalyticalRegTransformer/closed_form_registration.drawio-1.pdf}
+    \includegraphics[width=.43\textwidth, trim={17cm 0cm 0cm 0cm}, clip]{Figures/AnalyticalRegTransformerPDF/M_F_Xi_rk.pdf}
+    %\includegraphics[width=.99\columnwidth]{Figures/AnalyticalRegTransformerPDF/M_F_Xi_rk.pdf}
+    \caption{\label{xinet}\emph{Left}: Neural network $\Xi_\mathcal{F}$ implementing $\Xi$. \emph{Right}: Result of registering the 1-dimensional "images" $\ia : [0, 1] \rightarrow[0, 1], x \mapsto \cos(\frac{\pi}{2} x)$ and $\ib : [0, 1] \rightarrow[0, 1], x \mapsto x + 0.07 \sin(3\pi x)$ via $\Xi$ and $\Xi_\mathcal{F}$, illustrating that the resulting maps are equivalent. $\Xi$ is computable here as these images are invertible and smooth. The neural network output (gold) closely matches the analytical solution (i.e., $\Xi[\ia, \ib] = \ia^{-1} \circ \ib = \frac{2}{\pi} \cos^{-1}(x + 0.07 \sin(3\pi x))$, gray).\label{Fig:analytincal} \emph{Best-viewed in color.}}
+\end{figure*}
+% %We will implement $\Xi := (\ia)^{-1} \circ \ib$ using conventional neural components. 
+% Now, we introduce coordinate attention. Coordinate attention is simply a standard attention block where the value vectors are the coordinates of each voxel. This has the effect of computing the center of mass of the attention mask associated with each Query, and allows this center of mass computation to be performed using highly optimized kernels, such as flash attention.
+
+The input functions $I^\text{M}$, $I^\text{F}$, and the output transform are approximated as arrays of voxels. The functional $\Xi$ such that $\Xi[I^M, I^F]:= (I^M)^{-1} \circ I^F$ (which only operates on images that are diffeomorphic) can be directly implemented, without training, using standard neural network components. We refer to this implementation as $\Xi_\mathcal{F}$. The intention is to map each voxel in the moving image into a high dimensional vector that will have a large dot product with the corresponding voxel in the fixed image with the same value, and then compute the attention matrix with the embedded fixed image voxels as the queries and the embedded moving image voxels as the keys. Subsequently, we can compute the center of mass of the attention masks (i.e., where each fixed image voxel matches on the moving image) by setting the \emph{values} to be the raw coordinates of the moving image voxels. We choose for the embedding a $1\times 1$ convolution with large weights followed by a sine-nonlinearity, which has the desired property of two vectors having a large dot product only when their input intensities are similar. Because our images are diffeomorphisms, we know a-priori that the input intensity of our moving image will only be close to intensities of the fixed image in a small region. We verify that this network, without any training, reproduces $\Xi$ when applied to input images that are diffeomorphisms, see~Fig.~\ref{Fig:analytincal} (right).
+%with $\ia$ and $\ib$ represented as arrays of pixels containing image values (i.e., the standard representation) and the output transform represented as an array of coordinates. To do this, we need a representation of the identity map: two standard 1x1 convolution layers with shared weights, a $\sin$ nonlinearity, and an attention layer. In plain english, for each input Query an attention layer returns the average of all input Values, weighted by the similarity of their associated Keys to the Query. When this work applies attention, the Value vector is always the the (x, y, z) coordinate of that pixel in the fixed image, hence "Coordinate Attention". The weighted average of coordinates is a center of mass, and so each Query (generated by sampling the features of the encoded moving image) gets mapped to the center of mass of its match to the Key vectors associated with each pixel of the fixed image. This works after random weight initialization, without training, for 1-d images that are diffeomorphisms (\ref{Fig:analytincal}). Because this simple neural network $\Xi_\mathcal{F}$ has the same input-output relationship as the closed form solution $\Xi$, it necessarily has the same equivariances. \textcolor{blue}{rk: I find this paragraph quite confusing at the moment.}
+\vspace{-0.2cm}
+\subsection{Limitation on equivariance feasibility}
+
+In Sec.~\ref{subsection:xinetimplementation}, we turned images into features using $1\times 1$
+convolution followed by a sine nonlinearity which, since it is a function applied pointwise, is perfectly equivariant. This
+worked since the images to be registered were diffeomorphisms, and hence each intensity vector was unique. However, since, as we are about to prove, we cannot achieve equivariance to arbitrary diffeomorphisms for registering
+real images, we have to sacrifice some equivariance
+in order to expand the set of valid inputs. This drives our choice to target translation and rotation equivariance out of the set of possible diffeomorphisms.
+
+\textbf{Claim.} It is impossible to have an algorithm that is $[W, U]$
+equivariant to any non-identity class of transforms and can be applied to arbitrary
+images.
+
+\vskip1ex
+\noindent
+\textbf{Counterexample.}  Assume that $\Phi$ is a $[W, U]$ equivariant algorithm for all $W, U \in$ diffeomorphisms, and that is valid for all input images. We ask it to register the images $\ia, \ib := 0$. Then, for a non identity $W$ and  $U$ picked to be identity,
+\begin{align}
+    \Phi[\ia, \ib] &= W^-1 \circ \Phi[\ia \circ W, \ib \circ U] \circ U\\
+    \Phi[\ia, \ib] &= W^-1 \circ \Phi[\ia \circ W, \ib]\\
+    \Phi[0, 0] &= W^ {-1} \circ \Phi[0, 0]\\
+    id &= W^{-1} ~ ,
+    \end{align}where 0 indicates an image that is zero everywhere. This yields a contradiction.
+
+\vskip1ex
+
+\textbf{Claim.} It is impossible to have an algorithm that is $[W, U]$
+equivariant to rotations and can be applied to rotationally symmetric images.
+
+\vskip1ex
+\noindent
+\textbf{Counterexample.}  Assume that $\Phi$ is a $[W, U]$ equivariant algorithm for all $W, U \in$ rotations, and that $\Phi$ is valid for input images including at least one rotationally symmetric image $\ia$ (such that for a non identity $W,~\ia \circ W = \ia$.) We ask it to register the images $\ia, \ib$. Then, for a non identity $W$ with respect to which $\ia$ is symmetric and  $U$ picked to be identity,
+\begin{align}
+    \Phi[\ia, \ib] &= W^{-1} \circ \Phi[\ia \circ W, \ib \circ U] \circ U\\
+    \Phi[\ia, \ib] &= W^{-1} \circ \Phi[\ia \circ W, \ib]\\
+    \Phi[\ia, \ib] &= W^ {-1} \circ \Phi[\ia, \ib]\\
+    id &= W^{-1} ~ ,
+    \end{align} This yields a contradiction, as we assumed W was not identity.
+
+
+We conclude that there is a tradeoff. If there is a valid input image $I$ and a nonzero transform $T$ such that $I \circ T = I$, then $T$ cannot be in the class of transforms with respect to which $\Phi$ is $[W, U]$ equivariant. For a simple example, an algorithm that registers images of perfect circles cannot be $[W, U]$ equivariant to rotations. For a practical example, since brain-extracted brain images have large areas outside the brain that are exactly zero, algorithms that register such preprocessed brain images cannot be $[W, U]$ equivariant to transforms that are identity everywhere in the brain but have deformations outside the brain. To modify $\Xi_\mathcal{F}$ so that it can apply to a broader class of images other than "images that happen to be diffeomorphisms", we thus have to restrict the transforms with respect to which it is $[W, U]$ equivariant. 
+
+\subsection{Guarantee given equivariance}
+\label{guarantee}
+While it is unfortunate that we cannot achieve [W, U] equivariance to arbitrary diffeomorphisms for arbitrary input images, there is great advantage to expanding the group of transforms $\mathcal{T}$ with respect to which our algorithm is [W, U] equivariant. The advantage is as follows: for any input image pair $\ia, \ib$ where the images can be made to match exactly by warping $\ia$ by a transform $U$ in $\mathcal{T}$, an algorithm that outputs the identity map when fed a pair of identical images and is $[W, U]$ equivariant with respect to $\mathcal{T}$ will output U for $\ia, \ib$. We see this as follows.
+
+Assume $\Phi$ outputs the identity transform when fed identical fixed and moving images and $[W, U]$ equivariant with respect to $\mathcal{T}$, and $\ia \circ U = \ib$ for a $U \in \mathcal{T}$. Then
+
+\begin{align}
+    \Phi[&\ia, \ib] \\
+    &= \Phi[\ia, \ia \circ U] \\
+    &= \Phi[\ia, \ia] \circ U \\
+    &= U\,,
+\end{align}
+where $\Phi[\ia, \ia \circ U]=\Phi[\ia, \ia] \circ U$ holds because of the $[W,U]$ equivariance with $W$ being the identity transform. 
+
+We note that before training, the CARL architecture emphatically does not have the property of outputting the identity map when fed identical images: instead, it learns this property from the regularizer during training.
+
+
+\iffalse
+\section{Comparison to KeyMorph on IXI brain.}
+A strong competitor to our method is KeyMorph \cite{Wang2023ARA}. In Sec~\ref{brainreg} we compared to a version of their model we trained ourselves using the published KeyMorph code. To verify our relative performance, we also train our model on the IXI dataset using the KeyMorph splits, preprocessing and evaluation, and compare to the published KeyMorph pretrained weights. We compare on unimodal registration. Tab.~\ref{tab:ixi} shows that CARL outperforms KeyMorph and ANTs.
+
+Note that KeyMorph evaluates using DICE on segmentations
+produced by SynthSeg \cite{billot_synthseg_2023} -- this precludes direct comparison to EasyReg, which uses SynthSeg in its forward pass. With this caveat in mind, by this metric EasyReg has a DICE $82.4$. 
+\iffalse
+\begin{tabular}[b]
+    \centering
+ \captionof{table}{We verify equivariance with respect to translation on the IXI dataset. We translate one image before performing registration with our method, and verify that performance does not vary until, at 60px, the brain begins to depart the edge of the image. We verify that our method is not equivariant to rotating one image.}
+    \label{tab:my_label}
+    \begin{tabular}{@{}lcc@{}}
+        \toprule
+                       & CARL & GradICON                     \\
+        \midrule
+        Translation    & DICE                                \\
+        \midrule
+        0 vx           & 75.5 & \textcolor{red}{65.7 prelim} \\
+        30 vx          & 75.6 & \textcolor{red}{63.4 prelim} \\
+        60 vx          & 74.4 & \textcolor{red}{34.1 prelim} \\
+        \midrule
+        Rotation                                             \\
+        \midrule
+        0 \textdegree           & 75.5 & \textcolor{red}{65.7 prelim} \\
+        90 \textdegree & 6.8                                 \\
+        \bottomrule
+    \end{tabular}
+\end{tabular} 
+\fi
+
+% \begin{table}
+%      \small
+%      \centering
+%      \captionof{table}{Evaluation on HCP while translating one image}
+%      \begin{tabular}{@{}lccccc@{}}
+%          \toprule
+%                        & CARL & +(io) & GradICON & +(io) & Easyreg           \\
+%         \midrule
+%         Shift    & & & DICE                                \\
+%         \midrule
+%         0 vx           & 78.8 & 80.4 & 78.6 & 80.2 & 78.8\\
+%         15 vx          &  78.8 & 80.2 & 66.8 & 79.2 & 78.8\\
+%         30 vx          & 78.8 & 80.1 & ~~7.0 & 75.8 & 78.8\\
+%         45 vx & 78.7 &80.1 & ~~0.2 & ~~9.0 & 78.7\\
+%         \midrule
+%      \end{tabular}
+%      \label{tab:HCP_equivariance}
+%  \end{table}
+
+\begin{table}[htp]
+    \centering
+ \captionof{table}{Results on IXI. CARL performs well compared to KeyMorph. Following KeyMorph's protocol we evaluate using segmentations produced with SynthSeg~\cite{billot_synthseg_2023}, and perform brain extraction using a different U-Net based on \cite{KLEESIEK2016460}. }
+    \label{tab:ixi}
+    \begin{tabular}{@{}lc@{}}
+        \toprule
+        Method                              & DICE                     \\
+        \midrule
+        KeyMorph \cite{Wang2023ARA}         & 68.5                                   % (Fig. 13, 512 keypoints, supervised) 
+        \\
+        ANTs SyN \cite{avants2008symmetric} & 67.1                                \\
+        %EasyReg $\dagger$                             & 82.4                                         \\
+        %GradICON \cite{tian2022}            & \textcolor{red}{prelim} & 0.007        \\
+        CARL                                & 75.5                                   \\
+        CARL (IO)                           & 77.5                                   \\
+        %CARL (io + train augmentation) \\
+        \bottomrule
+        
+    \end{tabular}
+\end{table}
+\fi
+
+\section{Performance implications of two step registration}
+We observed in Sec.~\ref{retinaexpr} that $\Xi_\theta$ trains significantly better as the beginning of a multistep algorithm than on its own. Here, we examine why that may be, while removing as much complexity as possible. Our finding suggests that two step registration assists training by functioning as a similarity
+measure with better capture radius.
+
+First, we briefly train a single step network $\Phi$ on the \textbf{Baseline} task from Sec.~\ref{retinaexpr}, i.e. we stop training before convergence. Then, we examine the loss
+landscape of a trivial "fixedTranslation" neural network $\tau$ to
+register \textbf{Baseline}. This network has a single parameter, $t$, and it ignores
+its input images and always shifts images to the right by $t$: that is
+\begin{equation}
+	\tau[\ia, \ib](\vec{r}) = \vec{r} + \begin{bmatrix}t \\ 0\end{bmatrix}\,.
+\end{equation}
+
+The optimal value of $t$ is zero since there is no bias towards left or right
+shift of images in this dataset- but if we were to train $\tau$ on LNCC similarity, how well would the gradients drive t to zero?
+
+We plot $LNCC(\ia \circ \tau[\ia, \ib], \ib)$ against $t$ compared to $LNCC(\ia
+	\circ TwoStep\{\tau, \Phi\}[\ia, \ib], \ib)$. We also plot
+$\frac{\partial}{\partial t} LNCC(\ia \circ \tau[\ia, \ib], \ib)$ and
+$\frac{\partial}{\partial t}LNCC(\ia \circ TwoStep\{\tau, \Phi\}[\ia, \ib],
+	\ib)$ using PyTorch's back-propagation. Fig.~\ref{fig:landscapces} shows the result indicating that multi-step registration results in better capture radius.
+
+We conjecture that when two step network $\text{TwoStep}\{\tau, \Phi\}$ is trained with an LNCC loss, the loss function seen by $\tau$ is not simply LNCC, but instead the loss function seen by $\tau$ is actually the
+performance of $\Phi$ (which is measured by LNCC), which is an implicit loss function with a better capture
+radius than the original LNCC loss function.
+
+\begin{figure}[htp]
+	\centering
+	\includegraphics[width=.45\textwidth]{Figures/secondstep_landscape.png}
+	\includegraphics[width=.45\textwidth]{Figures/secondstep_gradlandscape.png}
+	\caption{The loss of $TwoStep\{\tau, \Phi\}$ (i.e., translation before network) as a function of t is much better behaved than the loss of $\tau$ (i.e., translation) as a function of t. The capture radius of the former is larger and the loss is overall smoother close to the correct solution as shown on the bottom.}
+	\label{fig:landscapces}
+\end{figure}
+
+\section{Computational Budget}
+
+Each 100,000 step training run of CARL takes 14 days on 4 RTX A6000 GPUs or 6 days on four A100 GPUS. In total, 336 GPU days were spent developing the CARL architecture and training the final models.
+
+An additional 45 GPU days were spent training comparison methods. 14 server days were spent training KeyMorph variants, although the published KeyMorph code is io-bound and did not significantly load the server's GPU.
+
+\section{Comparison Methods Details}
+
+\subsection{Abdomen1k}
+For Abdomen1k, we trained all methods using their published code and default hyperparameters.
+
+\subsection{DirLab Lung}
+On the DirLab challenge set, all results of comparison methods are taken from the literature. Results of ANTs, Elastix, Voxelmorph, and LapIRN are from \cite{tian2022}. The remainder are from their original publications.
+
+\subsection{HCP}
+On HCP, we evaluated ANTs using code from \cite{tian2022}. Results of GradICON, and ConstrICON are from the ConstrICON publication. We evaluated KeyMorph by training a model on the HCP 
+Dataset using KeyMorph's published code and hyperparameters for the IXI dataset. We evaluated Easyreg using its published weights, which are advertised to be appropriate for the HCP dataset. We measured the equivariance of the GradICON method using GradICON's published code and weights.
+
+
+
+\section{Abdomen 1k Test Pairs}
+\label{abdomen_fulldata}
+
+We used the following 30 image pairs to evaluate our abdomen registration experiments.
+
+
+00817 00872,
+00808 00832,
+00815 00863,
+00857 00860,
+00883 00848,
+00826 00812,
+00862 00803,
+00849 00855,
+00877 00800,
+00857 00834,
+00829 00875,
+00813 00840,
+00803 00802,
+00803 00883,
+00869 00801,
+00848 00887,
+00827 00854,
+00803 00867,
+00828 00856,
+00863 00870,
+00829 00844,
+00829 00886,
+00828 00858,
+00837 00802,
+00853 00871,
+00882 00812,
+00823 00880,
+00837 00815,
+00842 00864,
+00854 00864
+
+\section{Extension to Rotational Equivariance}
+\label{sec:augmentation}
+
+The first solution to obtain a registration network that exhibts rotation equivariance that comes to mind is to simply augment the training dataset with random rotations, and see if the network can still register it. This conceptually works fine for our main training with GradICON regularization, but breaks when directly applied to our diffusion regularized pretraining (which is empirically required for training a coordinate attention layer).
+That is , the training loss would look like
+\begin{align}
+    R, Q &\sim \text{Uniform}(\text{Rotations}) \\
+    I^M, I^F &\sim \text{Dataset} \nonumber \\
+    \hat{I}^M, \hat{I}^F &:= (I^M \circ R), (I^F \circ Q) \nonumber \\
+    \text{minimize}:& ~\lsim(\hat{I}^M \circ \Phi[\hat{I}^M, \hat{I}^F], \hat{I}^F) + \mathcal{L}_\text{reg}(\Phi[\hat{I}^M, \hat{I}^F]) \nonumber
+\end{align}
+This cannot be reliably trained with a diffusion regularizer, because to align $\hat{I}^M$ to $\hat{I}^F$  will require transforms with Jacobians of the transformation map that are very far from the identity map as they will need to express large-scale rotations. 
+
+Our proposed solution is to move the augmentation "inside" the losses, in the following sense:
+
+First, expand our augmented images $\hat{I}^M, \hat{I}^F$
+\begin{align}
+    R, Q &\sim \text{Uniform}(\text{Rotations}) \nonumber \\
+    I^M, I^F &\sim \text{Dataset} \nonumber \\
+    &\text{minimize}:  \nonumber \\
+    &\lsim((I^M \circ R) \circ \Phi[I^M \circ R, I^F \circ Q], I^F \circ Q) \nonumber \\
+    &+ \mathcal{L}_\text{reg}(\Phi[I^M \circ R, I^F \circ Q])
+\end{align}
+In this expanded form, change to the following:
+\begin{align}
+    R, Q &\sim \text{Uniform}(\text{Rotations}) \nonumber \\
+    I^M, I^F &\sim \text{Dataset} \nonumber \\
+    &\text{minimize}:  \nonumber \\
+    &\lsim(I^M \circ (R \circ \Phi[I^M \circ R, I^F \circ Q] \circ Q^{-1}, I^F) \nonumber \\
+    &+ \mathcal{L}_\text{reg}(R \circ \Phi[I^M \circ R, I^F \circ Q] \circ Q^{-1})
+\end{align}
+Then, collect like terms. It becomes clear that the augmentation is now \emph{inside} the loss and connected to the network. 
+\begin{align}
+    R, Q &\sim \text{Uniform}(\text{Rotations}) \nonumber \\
+    I^M, I^F &\sim \text{Dataset} \nonumber \\
+    \hat{\Phi}[I^M, I^F] &:= R \circ \Phi[I^M \circ R, I^F \circ Q] \circ Q^{-1} \\   
+    \text{minimize}:& ~\lsim(I^M, \hat{\Phi}[I^M, I^F], I^F) + \mathcal{L}_\text{reg}(\hat{\Phi}[I^M, I^F]) \nonumber
+\end{align}
+Now, while $\Phi$ outputs large rotations, on a rotationally aligned dataset $\hat{\Phi}$ outputs transforms with Jacobians near the identity, and so can be trained with diffusion regularization.
+
+\section{Improved Extrapolation of Displacement Fields}
+\label{sec:improved_extrapolation}
+
+Displacement fields $(\text{disp})$ are stored as grids of vectors associated with coordinates in $[0, 1]^D$. In ICON \cite{greer2021icon}, Greer et al. noted that the method of extrapolating when evaluating a transform outside of this region is important when composing transforms, since transforms such as translations and rotations move some coordinates from inside $[0, 1]^D$ to outside it. They propose coordinate by coordinate clipping before interpolating into  \emph{the displacement field}
+
+\begin{equation}
+    \varphi_\text{disp}(x) = x + \text{interpolate}(\text{disp}, \text{clip}(x, 0, 1))\,.
+\end{equation}
+
+This formulation has a discontinuous Jacobian on the boundary of $[0, 1]^D$, and in particular results in non-invertible transforms on the boundaries for large rotations.
+
+We instead propose 
+
+\begin{align}
+\text{clip}(x) &= x - 
+    \begin{cases}
+     x& \text{if } x < 0\\
+    0,              & \text{otherwise}
+\end{cases}
+    -
+    \begin{cases}
+     (x - 1)& \text{if } x > 1\\
+    0,              & \text{otherwise}
+\end{cases}\\
+    \text{reflect}(x) &= x - 
+    \begin{cases}
+     2x& \text{if } x < 0\\
+    0,              & \text{otherwise}
+\end{cases}
+    -
+    \begin{cases}
+     2(x - 1)& \text{if } x>  1\\
+    0,              & \text{otherwise}
+\end{cases}\\
+    \varphi_\text{disp}(x) &= x + 2~\text{interpolate}(\text{disp}, \text{clip}(x)) \\
+    & - \text{interpolate}(\text{disp}, \text{reflect}(x))
+\end{align}
+
+which is identical inside $[0, 1]^D$ but has continuous Jacobian over the boundary.
+
+\iffalse
+\section{Qualitative observations while training CARL\{ROT\}}
+We have blessedly little to report on the process of training translationally equivariant CARL using the presented procedure: Once suitable hyperparameters were found, training was performed on the four datasets (HCP, IXI, COPDGene, and Abdomen1k) with little supervision or intervention, and loss curves were generally smooth. We therefore anticipate that a reader of this paper may train CARL on their own dataset using the published code with little fuss. CARL\{ROT\} is an entirely different story. Initial training using the modified diffusion loss followed an intensely stairstepped loss curve: The model learned first a transform that maps all points to the center of the image, then a transform that mapped all points to a line through the brain from top to bottom, then to a plane bisecting the brain symmetrically, and only finally the correct correspondences. Between each of these transitions, the model would stay at a stable loss value with no visible improvement for several hours. Thus, the model does not output a diffeomorphism or even a transform that is valid whatsover until approximately six hours into training, and so all compute spent up to this point must be provided on faith. Training for the first 50,000 steps with the GradICON loss was unremarkable. Training for the second 50,000 steps, with the final displacement predicting U-Net added to the network, was difficult. The model begain intermittently diverging. Each time, the model was restored to a pre-divergence checkpoint, but was observed to diverge again after the same number of steps. Eventually, the model had its weights reset to the checkpoint before divergence, its optimizer state reset to initial values, and learning rate reduced by a factor of $10$ to $1e-5$. This allowed training to complete without divergence.
+\begin{figure*}
+    \includegraphics[width=1\textwidth]{all_loss.png}
+    \caption{Overall Loss curve for CARL\{ROT\} on HCP, including manual resets.}
+\end{figure*}
+\fi
+\begin{figure}
+    \centering
+    \includegraphics[width=0.7\linewidth]{Figures/feature_interpretation/train.png}
+    \includegraphics[width=0.7\linewidth]{Figures/feature_interpretation/test.png}
+    \includegraphics[width=0.7\linewidth]{Figures/feature_interpretation/heat.png}
+    \includegraphics[width=0.7\linewidth]{Figures/feature_interpretation/thresh.png}
+    \caption{A linear probe is used to aid interpretability of the features learned by the convolutional encoder. The linear probe is trained on one image, and then its output heat maps are visualized on another image. The red, green, and blue channels are used to indicate the liver, kidney, and spleen respectively. The grey channel is used to indicate the pancreas, although no direction is found in the features that segments it.}
+    \label{fig:linear_probe_interpretability}
+\end{figure}
+\section{Investigation of internal features of $\Xi_\theta$}
+
+We use interpretability techniques to investigate the features learned by the convolutional encoder $\convo$ of $\Xi_\theta$. Two images are selected from the Abdomen1k test set, and independently encoded using the convolutional network. We convert these images into features using $\convo$. From these voxelwise features, we train linear probes to segment the kidneys, liver, pancreas, and spleen of a single train image by minimizing least squares error between ground truth and predicted label, and then visualize the probe's output on a second test image. This linear probe suggests (see \ref{fig:linear_probe_interpretability}) that the features, which were learned without any segmentations, include directions that measure liver-ness, spleen-ness, and kidney-ness, but there is no pancreas-direction. This may explain why our model is less accurate at registering the pancreas than the other organs. 
+
+
+\subsection{Verification that $\Xi_\theta$'s attention masks are compact}
+
+\begin{figure}
+    \centering
+    \includegraphics[width=.9\linewidth, trim={1cm 0cm 1cm 0cm}, clip]{Figures/feature_interpretation/sample_attention.png}
+    \caption{Sample attention masks from inside the coordinate attention block of CARL trained on Abdomen1k. The masks are compact, justifying the claim on which we build \ref{sec:wuproof}.}
+    \label{fig:attention_samples}
+\end{figure}
+
+%Perspective 2: Attention masks
+
+As an assumption in \ref{sec:wuproof} was that post training, attention masks are spatially compact. We verify this by computing the attention masks associated with the query vectors of 25 random voxels when registering the pair in \ref{fig:linear_probe_interpretability}, maximum intensity projecting them to get 2-D heatmaps, and plotting. As expected, we see in \ref{fig:attention_samples} that each pixel in the moving image attends to a small region in the fixed image. As a result, these attention masks will not immediately interact with the boundary of the padded feature volume when an image is translated. This property is required for [W, U] equivariance.
+
+
+\onecolumn
+
+\section{Fully elaborated proof that Coordinate attention is [W, U] equivariant}
+
+
+Previously, we elided the difference between two definitions of an image: a function from $[0, 1]^D \rightarrow \mathbb{R}$ suitable for composition with transforms, and a function from voxel indices to intensities suitable for discrete convolution and attention. Here, we fully make this distinction explicit. We will continue to consider \emph{images} to be continuous, and discretize them as necessary by composing them with or interpolating them at the function coords which maps voxel indices to coordinates in $[0, 1]^D$. This explicit style makes clear that the proof is formally correct, and also more directly maps to the implementation. We use the linear interpolation function $\text{interpolate}(\text{points}, \text{values}, x)$ where x is the spatial location where we evaluate, and points and values are the locations where we know the value of the function (typically a grid). 
+
+\textbf{Assumptions:} We assume that the feature encoders are translation equivariant like
+\begin{equation}
+	\convo_\theta(I \circ U) = \convo_\theta(I) \circ U\,.
+    \label{convperm}
+\end{equation}
+
+
+
+
+Without positional embeddings or causal masking, (we do not use
+either) the attention mechanism is equivariant to permutations as follows: for $P_1, P_2$ permutations; and the output and $K$ (Key), $Q$ (Query), and $V$ (Value) inputs represented each as a function from an index to a vector, and an attention block represented as $\mathbb{T}$,
+\begin{equation} \mathbb{T}[K \circ P_1, Q \circ P_2, V \circ P_1] = \mathbb{T}[K, Q, V] \circ P_2\,. \label{transperm2}\end{equation}
+
+In plain language, changing the order of the queries causes the order of the output of the attention operation to have its order changed in the same way, and changing the order of the keys and values has no effect as long as they are changed together.
+
+Additionally, because the attention weights in an attention block sum to 1, for an affine function $f$, we have 
+
+\textbf{Lemma}:
+\begin{equation}\mathbb{T}[K, Q, f\circ V] = f \circ \mathbb{T}[K, Q, V]\,. \label{transaff2}\end{equation}
+
+\textbf{Proof of lemma}: Once attention weights $w_i$ are computed, for each output token we produce a weighting function W
+
+\begin{equation}
+    W(\textbf{x}_i \dots) = \sum_j w_j \textbf{x}_j
+\end{equation}
+
+where $w_i$ sum to 1.
+
+We also have an affine function f, that is 
+\begin{equation}
+    f(\textbf{x}) = A\textbf{x} + \textbf{b}
+\end{equation}
+
+We then observe that b is preserved and hence $f\circ W = W \circ f$ as long as $w_i$ sum to 1.
+
+
+
+Finally, we assume that the attention mask associated with each query vector has small spatial
+support. Finding a training procedure that reliably fulfilled this assumption across different datasets was nontrivial: we find that this assumption is satisfied after regularizing the  network end-to-end with diffusion
+regularization for the first several epochs, and using GradICON regularization thereafter. This is a crucial empirical result that we find evidence for in \ref{fig:attention_samples}
+
+With these assumptions, we prove that $\Xi_\theta$ is $[W, U]$ equivariant to translations below.
+
+
+\textbf{Proof}: A translation $W$ by an integer number of voxels is both affine when seen as an operation on coordinates, $W_{x \mapsto x + r}$, and a permutation of the
+voxels when seen as an operation on voxel images $W_{\text{permutation}}$ (as long as we can neglect boundary effects). The map from indices to coordinates, $\text{coords}$, serves as the bridge between these two representations of a transform ($W_{x \mapsto x + r} \circ \text{coords} = \text{coords} \circ W_{\text{permutation}})$. As long as the attention masks have small spatial support (and hence do not interact with the boundary), we can suppress boundary effects by padding with zeros before applying the operation. So, for translations $W$ and $U$, we have
+\[\Xi_\theta[ I^M, I^F](x) :=\text{interpolate}(\text{coords}, \mathbb{T}[\convo_\theta (I^M \circ \text{coords}) , \convo_\theta(I^F \circ \text{coords}), \text{coords}], x)\enspace, \]
+from which we establish that $\Xi_\theta$ is $[W, U]$ equivariant with respect to translation as follows: 
+\begin{equation}
+	\begin{split}
+		& \Xi_\theta[ I^M \circ W, I^F \circ U](x)  =\text{interpolate}(\text{coords}, \mathbb{T}[\convo_\theta (I^M \circ W_{x \mapsto x + r} \circ \text{coords}) , \convo_\theta(I^F \circ U_{x \mapsto x + r} \circ \text{coords}), \text{coords}], x)          \\
+        &=\text{interpolate}(\text{coords}, \mathbb{T}[\convo_\theta (I^M \circ \text{coords} \circ W_{\text{permutation}}) , \convo_\theta(I^F \circ \text{coords} \circ U_{\text{permutation}}), \text{coords}], x)          \\
+		& \stackrel{\eqref{convperm}}{=} \text{interpolate}(\text{coords}, \mathbb{T}[\convo_\theta (I^M \circ \text{coords}) \circ W_{\text{permutation}} , \convo_\theta(I^F \circ \text{coords}) \circ U_{\text{permutation}}, \text{coords}], x)\\
+		& \stackrel{\eqref{transaff2}}{=} \text{interpolate}(\text{coords}, W_{x \mapsto x + r}^{-1} \circ \mathbb{T}[\convo_\theta (I^M\circ \text{coords}) \circ W_{\text{permutation}}, \convo_\theta(I^F\circ \text{coords}) \circ U_{\text{permutation}}, W_{x \mapsto x + r} \circ \text{coords}], x) \\
+		&= W_{x \mapsto x + r}^{-1} \circ \text{interpolate}(\text{coords}, \mathbb{T}[\convo_\theta (I^M\circ \text{coords}) \circ W_{\text{permutation}}, \convo_\theta(I^F\circ \text{coords}) \circ U_{\text{permutation}}, W_{x \mapsto x + r} \circ \text{coords}], x) \\
+		& = W_{x \mapsto x + r}^{-1} \circ \text{interpolate}(\text{coords},  \mathbb{T}[\convo_\theta (I^M\circ \text{coords}) \circ W_{\text{permutation}}, \convo_\theta(I^F\circ \text{coords}) \circ U_{\text{permutation}}, \text{coords} \circ W_{\text{permutation}}] , x) \\
+        & \stackrel{\eqref{transperm2}}{=} W_{x \mapsto x + r}^{-1} \circ \text{interpolate}(\text{coords},  \mathbb{T}[\convo_\theta (I^M\circ \text{coords}), \convo_\theta(I^F\circ \text{coords}) \circ U_{\text{permutation}}, \text{coords} ] , x) \\
+        & \stackrel{\eqref{transperm2}}{=} W_{x \mapsto x + r}^{-1} \circ \text{interpolate}(\text{coords},  \mathbb{T}[\convo_\theta (I^M\circ \text{coords}), \convo_\theta(I^F\circ \text{coords}), \text{coords} ] \circ U_\text{permutation}, x) \\
+        & = W_{x \mapsto x + r}^{-1} \circ \text{interpolate}(\text{coords} \circ U^{-1}_\text{permutation},  \mathbb{T}[\convo_\theta (I^M\circ \text{coords}), \convo_\theta(I^F\circ \text{coords}), \text{coords} ], x) \\
+        & = W_{x \mapsto x + r}^{-1} \circ \text{interpolate}((U_{x \mapsto x + r})^{-1} \circ \text{coords},  \mathbb{T}[\convo_\theta (I^M\circ \text{coords}), \convo_\theta(I^F\circ \text{coords}), \text{coords} ], x) \\
+        & = W_{x \mapsto x + r}^{-1} \circ \text{interpolate}(\text{coords},  \mathbb{T}[\convo_\theta (I^M\circ \text{coords}), \convo_\theta(I^F\circ \text{coords}), \text{coords} ], U_{x \mapsto x + r} (x)) \\
+		& =  W^{-1} \circ \Xi_\theta[ I^M , I^F] \circ U\,.
+	\end{split}
+\end{equation}
+Again, the same argument can also be applied to $[W, U]$ equivariance to axis aligned $\pi$ or $\frac{\pi}{2}$ rotations, provided that $\convo_\theta$ is replaced with an appropriate rotation equivariant encoder.
+
+\begin{figure}[htp]
+	\centering
+
+		\begin{tabular}{cccc}
+			Moving Image & Warped (CARL) & Grid (CARL) & Fixed Image   \\ 
+			\includegraphics[width=.20\textwidth, trim={0cm 19cm 19cm 1.5cm}, clip]{supfigs/abdomen_A.png}  &
+			\includegraphics[width=.20\textwidth, trim={0cm 19cm 19cm 1.5cm}, clip]{supfigs/abdomen_warped_A.png} &
+			\includegraphics[width=.20\textwidth, trim={0cm 19cm 19cm 1.5cm}, clip]{supfigs/abdomen_grid_A.png} &
+			\includegraphics[width=.20\textwidth, trim={0cm 19cm 19cm 1.5cm}, clip]{supfigs/abdomen_B.png}	\\
+            \includegraphics[width=.20\textwidth, trim={0cm 1cm 19cm 20cm}, clip]{supfigs/abdomen_A.png}  &
+			\includegraphics[width=.20\textwidth, trim={0cm 1cm 19cm 20cm}, clip]{supfigs/abdomen_warped_A.png} &
+			\includegraphics[width=.20\textwidth, trim={0cm 1cm 19cm 20cm}, clip]{supfigs/abdomen_grid_A.png} &
+			\includegraphics[width=.20\textwidth, trim={0cm 1cm 19cm 20cm}, clip]{supfigs/abdomen_B.png}	\\
+            \includegraphics[width=.20\textwidth, trim={19cm 1cm 1cm 20cm}, clip]{supfigs/abdomen_A.png}  &
+			\includegraphics[width=.20\textwidth, trim={19cm 1cm 1cm 20cm}, clip]{supfigs/abdomen_warped_A.png} &
+			\includegraphics[width=.20\textwidth, trim={19cm 1cm 1cm 20cm}, clip]{supfigs/abdomen_grid_A.png} &
+			\includegraphics[width=.20\textwidth, trim={19cm 1cm 1cm 20cm}, clip]{supfigs/abdomen_B.png}	\\
+            \includegraphics[width=.20\textwidth, trim={0cm 19cm 19cm 1.5cm}, clip]{supfigs/lung_A.png}  &
+			\includegraphics[width=.20\textwidth, trim={0cm 19cm 19cm 1.5cm}, clip]{supfigs/lung_warped_A.png} &
+            \includegraphics[width=.20\textwidth, trim={0cm 19cm 19cm 1.5cm}, clip]{supfigs/lung_grid_A.png} &
+            \includegraphics[width=.20\textwidth, trim={0cm 19cm 19cm 1.5cm}, clip]{supfigs/lung_B.png}    \\
+            \includegraphics[angle=180, origin=c, width=.20\textwidth, trim={0cm 2cm 19cm 20cm}, clip]{supfigs/lung_A.png}  &
+            \includegraphics[angle=180, origin=c, width=.20\textwidth, trim={0cm 2cm 19cm 20cm}, clip]{supfigs/lung_warped_A.png} &
+            \includegraphics[angle=180, origin=c, width=.20\textwidth, trim={0cm 2cm 19cm 20cm}, clip]{supfigs/lung_grid_A.png} &
+            \includegraphics[angle=180, origin=c, width=.20\textwidth, trim={0cm 2cm 19cm 20cm}, clip]{supfigs/lung_B.png}    \\
+            \includegraphics[angle=180, origin=c, width=.20\textwidth, trim={19cm 2cm 1cm 20cm}, clip]{supfigs/lung_A.png}  &
+            \includegraphics[angle=180, origin=c, width=.20\textwidth, trim={19cm 2cm 1cm 20cm}, clip]{supfigs/lung_warped_A.png} &
+            \includegraphics[angle=180, origin=c, width=.20\textwidth, trim={19cm 2cm 1cm 20cm}, clip]{supfigs/lung_grid_A.png} &
+            \includegraphics[angle=180, origin=c, width=.20\textwidth, trim={19cm 2cm 1cm 20cm}, clip]{supfigs/lung_B.png}    \\
+		\end{tabular}
+
+	\caption{Detailed figures of our results on Abdomen1k (cases 00817 00872) and DirLAB case 1}
+\end{figure}
+
+\begin{figure}[htp]
+	\centering
+
+		\begin{tabular}{cccc}
+			Moving Image & Warped (CARL\{ROT\} IO) & Grid (CARL\{ROT\} IO) & Fixed Image   \\ 
+			\includegraphics[width=.20\textwidth, trim={0cm 19cm 19cm 1.5cm}, clip]{supfigs/hcp_A.png}  &
+			\includegraphics[width=.20\textwidth, trim={0cm 19cm 19cm 1.5cm}, clip]{supfigs/hcp_warped_A.png} &
+			\includegraphics[width=.20\textwidth, trim={0cm 19cm 19cm 1.5cm}, clip]{supfigs/hcp_grid_A.png} &
+			\includegraphics[width=.20\textwidth, trim={0cm 19cm 19cm 1.5cm}, clip]{supfigs/hcp_B.png}	\\
+            \includegraphics[width=.20\textwidth, trim={0cm 1cm 19cm 20cm}, clip]{supfigs/hcp_A.png}  &
+			\includegraphics[width=.20\textwidth, trim={0cm 1cm 19cm 20cm}, clip]{supfigs/hcp_warped_A.png} &
+			\includegraphics[width=.20\textwidth, trim={0cm 1cm 19cm 20cm}, clip]{supfigs/hcp_grid_A.png} &
+			\includegraphics[width=.20\textwidth, trim={0cm 1cm 19cm 20cm}, clip]{supfigs/hcp_B.png}	\\
+            \includegraphics[width=.20\textwidth, trim={19cm 1cm 1cm 20cm}, clip]{supfigs/hcp_A.png}  &
+			\includegraphics[width=.20\textwidth, trim={19cm 1cm 1cm 20cm}, clip]{supfigs/hcp_warped_A.png} &
+			\includegraphics[width=.20\textwidth, trim={19cm 1cm 1cm 20cm}, clip]{supfigs/hcp_grid_A.png} &
+			\includegraphics[width=.20\textwidth, trim={19cm 1cm 1cm 20cm}, clip]{supfigs/hcp_B.png}	\\
+			Moving Image & Warped (CARL IO) & Grid (CARL IO) & Fixed Image   \\ 
+            \includegraphics[width=.18\textwidth, trim={0cm 19cm 19cm 1.5cm}, clip]{supfigs/hcp_norot_A.png}  &
+			\includegraphics[width=.18\textwidth, trim={0cm 19cm 19cm 1.5cm}, clip]{supfigs/hcp_norot_warped_A.png} &
+			\includegraphics[width=.18\textwidth, trim={0cm 19cm 19cm 1.5cm}, clip]{supfigs/hcp_norot_grid_A.png} &
+			\includegraphics[width=.18\textwidth, trim={0cm 19cm 19cm 1.5cm}, clip]{supfigs/hcp_norot_B.png}	\\
+            \includegraphics[width=.18\textwidth, trim={0cm 1cm 19cm 20cm}, clip]{supfigs/hcp_norot_A.png}  &
+			\includegraphics[width=.18\textwidth, trim={0cm 1cm 19cm 20cm}, clip]{supfigs/hcp_norot_warped_A.png} &
+			\includegraphics[width=.18\textwidth, trim={0cm 1cm 19cm 20cm}, clip]{supfigs/hcp_norot_grid_A.png} &
+			\includegraphics[width=.18\textwidth, trim={0cm 1cm 19cm 20cm}, clip]{supfigs/hcp_norot_B.png}	\\
+            \includegraphics[width=.18\textwidth, trim={19cm 1cm 1cm 20cm}, clip]{supfigs/hcp_norot_A.png}  &
+			\includegraphics[width=.18\textwidth, trim={19cm 1cm 1cm 20cm}, clip]{supfigs/hcp_norot_warped_A.png} &
+			\includegraphics[width=.18\textwidth, trim={19cm 1cm 1cm 20cm}, clip]{supfigs/hcp_norot_grid_A.png} &
+			\includegraphics[width=.18\textwidth, trim={19cm 1cm 1cm 20cm}, clip]{supfigs/hcp_norot_B.png}	\\
+		\end{tabular}
+
+	\caption{Detailed figures of our results on HCP with the moving image synthetically rotated by 45 degrees. Both CARL(IO) and CARL\{ROT\}(IO) handle a 45 degree rotation well. This is especially remarkable for CARL(IO), which is far out of its training distribution. 45 degrees is empirically the limit of CARL's tolerance for rotations, while CARL\{ROT\}'s DICE is unaffected by arbitrary rotations, as seen in \ref{fig:hcp_translation}. Also, observe that CARL\{ROT\}'s formal equivariance to rotation causes its deformation grid to move rigidly with the brain in the negative space surrounding it.}
+\end{figure}
+
+\begin{figure}[htp]
+	\centering
+
+		\begin{tabular}{cccc}
+			Moving Image & Warped (GradICON IO) & Grid (GradICON IO) & Fixed Image   \\ 
+			\includegraphics[width=.20\textwidth, trim={0cm 19cm 19cm 1.5cm}, clip]{supfigs/gradicon_A.png}  &
+			\includegraphics[width=.20\textwidth, trim={0cm 19cm 19cm 1.5cm}, clip]{supfigs/gradicon_warped_A.png} &
+			\includegraphics[width=.20\textwidth, trim={0cm 19cm 19cm 1.5cm}, clip]{supfigs/gradicon_grid_A.png} &
+			\includegraphics[width=.20\textwidth, trim={0cm 19cm 19cm 1.5cm}, clip]{supfigs/gradicon_B.png}	\\
+            \includegraphics[width=.20\textwidth, trim={0cm 1cm 19cm 20cm}, clip]{supfigs/gradicon_A.png}  &
+			\includegraphics[width=.20\textwidth, trim={0cm 1cm 19cm 20cm}, clip]{supfigs/gradicon_warped_A.png} &
+			\includegraphics[width=.20\textwidth, trim={0cm 1cm 19cm 20cm}, clip]{supfigs/gradicon_grid_A.png} &
+			\includegraphics[width=.20\textwidth, trim={0cm 1cm 19cm 20cm}, clip]{supfigs/gradicon_B.png}	\\
+            \includegraphics[width=.20\textwidth, trim={19cm 1cm 1cm 20cm}, clip]{supfigs/gradicon_A.png}  &
+			\includegraphics[width=.20\textwidth, trim={19cm 1cm 1cm 20cm}, clip]{supfigs/gradicon_warped_A.png} &
+			\includegraphics[width=.20\textwidth, trim={19cm 1cm 1cm 20cm}, clip]{supfigs/gradicon_grid_A.png} &
+			\includegraphics[width=.20\textwidth, trim={19cm 1cm 1cm 20cm}, clip]{supfigs/gradicon_B.png}	\\
+			
+		\end{tabular}
+
+	\caption{In contrast, GradICON cannot adapt to a 45 degree rotation which was outside its training distribution.}
+\end{figure}
+
+
+
+%\section{Potential Societal Impacts}
+%We consider the potential societal impacts of our work. Potential positive impacts would be mediated through improved medical image registration accuracy. Registration is used in tasks such as cancer treatment planning, population studies, lung volume and motion measurement, and basic research on brain anatomy. There is a risk that a deep model trained to perform a medical task may underperform on marginalized groups. For example, some studies of melanoma classifiers have found that racially homogeneous training sets lead to disparate health impacts on marginalized groups through misdiagnosis \cite{melanomaRacial}. This could be a subject of future registration equity research, using test datasets that are annotated with demographic information.

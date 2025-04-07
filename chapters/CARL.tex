@@ -1,0 +1,668 @@
+
+
+
+\begin{figure}[htp]
+	\centering
+	%\includegraphics[width=.24\columnwidth, trim={32.5cm 1.3cm 18cm 24cm}, clip]{figures_for_roland/abdomen_case11_CARL/ImageA_seg.png}
+	%\includegraphics[width=.24\columnwidth, trim={32.5cm 1.3cm 18cm 24cm}, clip]{figures_for_roland/abdomen_case11_CARL/warped_A_seg.png}
+	%\includegraphics[width=.24\columnwidth, trim={32.5cm 1.3cm 18cm 24cm}, clip]{figures_for_roland/abdomen_case11_CARL/warped_A_grid.png}
+	%\includegraphics[width=.24\columnwidth, trim={32.5cm 1.3cm 18cm 24cm}, clip]{figures_for_roland/abdomen_case11_CARL/image_B_seg.png}
+
+	\begin{small}
+		\begin{tabular}{cc}
+			Moving Image                                                                                                                                           & Warped (CARL) \\
+			\includegraphics[width=.44\columnwidth, trim={76cm 16cm 18cm 37cm}, clip]{figures_for_roland/abdomen_case10_CARL/Abdomen_case10_CARL_imageA_seg.png}   &
+			\includegraphics[width=.44\columnwidth, trim={76cm 16cm 18cm 37cm}, clip]{figures_for_roland/abdomen_case10_CARL/Abdomen_Case10_carl_warpedA_seg.png}                  \\
+			Grid (CARL)                                                                                                                                            & Fixed Image   \\
+			\includegraphics[width=.44\columnwidth, trim={76cm 16cm 18cm 37cm}, clip]{figures_for_roland/abdomen_case10_CARL/Abdomen_case10_CARL_warpedA_grid.png} &
+			\includegraphics[width=.44\columnwidth, trim={76cm 16cm 18cm 37cm}, clip] {figures_for_roland/abdomen_case10_CARL/Abdomen_Case10_CarlImageBSeg.png} \\
+
+			Moving Image                                                                                                                                           & Warped (CARL\{ROT\}) \\
+			\includegraphics[width=.44\columnwidth, trim={75cm 14.4cm 20.4cm 41.3cm}, clip]{figures_for_roland/hcp_thicker_lines/A.png}   &
+			\includegraphics[width=.44\columnwidth, trim={75cm 14.4cm 20.4cm 41.3cm}, clip]{figures_for_roland/hcp_thicker_lines/A_warped.png}                  \\
+			Grid (CARL\{ROT\})                                                                                                                              & Fixed Image   \\
+			\includegraphics[width=.44\columnwidth, trim={75cm 14.4cm 20.4cm 41.3cm}, clip]{figures_for_roland/hcp_thicker_lines/A_grid.png} &
+			\includegraphics[width=.44\columnwidth, trim={75cm 14.4cm 20.4cm 41.3cm}, clip] {figures_for_roland/hcp_thicker_lines/B.png} \\
+%   Moving Image                                                                                                                                           & Warped (CARL) \\
+%			\includegraphics[width=.44\columnwidth, trim={2.8cm 1.2cm 2cm .3cm}, clip]{Figures/brain_equivariance_viz/A.png}   &
+%			\includegraphics[width=.44\columnwidth, trim={2.8cm 1.2cm 2cm .3cm}, clip]{Figures/brain_equivariance_viz/WARPED.png}                  \\
+%			Grid (CARL)                                                                                                                                            & Fixed Image   \\
+%			\includegraphics[width=.44\columnwidth, trim={2.8cm 1.2cm 2cm .3cm}, clip]{Figures/brain_equivariance_viz/GRID.png}  &
+%			\includegraphics[width=.44\columnwidth, trim={2.8cm 1.2cm 2cm .3cm}, clip]{Figures/brain_equivariance_viz/B.png}  
+%   
+			%\includegraphics[angle=90, width=.24\columnwidth, trim={32.5cm 1.3cm 18cm 24cm}, clip]{figures_for_roland/ixi_case10_slide_CARL/image_A_seg.png} & 
+			%\includegraphics[angle=90, width=.24\columnwidth, trim={32.5cm 1.3cm 18cm 24cm}, clip]{figures_for_roland/ixi_case10_slide_CARL/warped_A_seg.png} & 
+			%\includegraphics[angle=90, width=.24\columnwidth, trim={32.5cm 1.3cm 18cm 24cm}, clip]{figures_for_roland/ixi_case10_slide_CARL/warped_A_grid.png} &
+			%\includegraphics[angle=90, width=.24\columnwidth, trim={32.5cm 1.3cm 18cm 24cm}, clip]{figures_for_roland/ixi_case10_slide_CARL/image_B_seg.png}
+		\end{tabular}
+	\end{small}
+	\caption{Results on a pair from the Abdomen1k dataset, and a synthetically rotated example from the HCP dataset. %(\emph{top}) and IXI brains (\emph{bottom}, with added synthetic translations). 
+		CARL tackles large displacements and arbitrary rotations via equivariance.}
+	\vskip-8pt
+\end{figure}
+\section{Introduction}
+
+Image registration is an important task in medical image computing~\cite{roleofreg}. There is extensive research into solving this problem with deep learning~\cite{yang2017quicksilver, balakrishnan2019voxelmorph, mok2020large, tian2022}. In particular, unsupervised deep learning methods~\cite{greer2023inverse, Wang2023ARA} have attained strong performance on many benchmarks \cite{hering2022learn2reg}.
+%Exploiting
+%equivariance has been important to breakthrough developments in neural network
+%architectures. For example, the fundamental insight that drove AlexNet is
+%"Image processing should be approximately translation equivariant", the
+%fundamental insight that drove "Attention is all you need" is "Text processing
+%should be approximately permutation equivariant." We observe that image
+%registration should be approximately equivariant to warping either image
+%independently, and so design an architecture, "Coordinate attention" to keep
+%that symmetry. We note that most existing unsupervised deep registration approaches lack this equivariance, which directly translates to an inability to register images which were not captured with the same field of view as each other or with a field of view not represented in the training set.
+We present an equivariant registration layer that can be inserted into an  unsupervised multi-step registration network, which makes the overall registration architecture equivariant to independently translated images.
+
+\noindent
+\textbf{Notation.}
+\label{section:notation}
+We denote the \emph{moving} and \emph{fixed} images as $\ia$ and $\ib$,  respectively. They are functions $\Omega \rightarrow \real^D$, where $\Omega$ is the image domain, and $D$ is typically $1$ for a single-channel imaging modality. We denote a free \emph{transform} with a lowercase Greek letter such as $\varphi$.
+%such as CT, but could be, e.g., 2 to represent T1-- and T2--weighted magnetic resonance (MR) images simultaneously.
+Further, we denote a \emph{registration algorithm} as a capital Greek letter, such as $\Phi$, $\Xi$, or $\Psi$. We note that neural networks that perform registration are a subset of registration algorithms.
+In our notation, a registration algorithm can be applied to a pair of images by square brackets, \ie, $\Phi\left[\ia, \ib\right]$. 
+%\begin{equation}
+%    \Phi^{\text{MF}} := \Phi\left[\ia, \ib\right].
+%\end{equation}
+Hence, when applied to a pair of images, a registration algorithm yields a map $\mathbb{R}^N \rightarrow \mathbb{R}^N$ (ideally a diffeomorphism) that can be post-composed
+with the moving image to yield a function that is close to the fixed image, \ie,
+\begin{equation}
+	\ia \circ \Phi\left[\ia, \ib\right] \sim \ib.
+	\label{registration_problem_statement}
+\end{equation}
+With this notation, we can define what it means for a registration algorithm to be \emph{equivariant}. Conceptually, equivariance means that when the input images are warped, correspondence between the registered images is preserved; it is not required that the correspondence is \emph{correct}, only that it is \emph{the same} before and after applying a warp to the input images. We say a registration algorithm $\Phi$ is \textcolor{blue!75!black}{$[W, U]$ equivariant} with respect to a class of transforms $\mathcal{T}$ if correspondence is preserved when the images are warped \emph{independently}. Formally, this means
+\begin{tcolorbox}[top=-2mm,bottom=0mm,boxsep=1mm,colback=blue!5!white,colframe=blue!75!black]
+ %    \begin{equation}
+ %     .   \begin{split}
+	% 	 & \forall\ W, U \!\in \mathcal{T}:                              \\
+	% 	 & \Phi\left[\ia \circ W, \ib\! \circ U\right] = W^{-1}\! \circ \Phi\left[\ia, \ib\right] \circ U\,.
+	% 	\label{eqn:WUequiv}
+	% \end{split}
+ % \end{equation}
+ \begin{align}
+		& \forall\ W, U \!\in \mathcal{T}: \label{eqn:WUequiv}                              \\
+		& \Phi\left[\ia \circ W, \ib\! \circ U\right] = W^{-1}\! \circ \Phi\left[\ia, \ib\right] \circ U\,.\notag
+\end{align}
+\end{tcolorbox}
+% \begin{equation}
+% \forall\ W, U \in \mathcal{T},~\Phi[I^M \circ W, I^F \circ U] = W^{-1} \circ \Phi[I^M, I^F] \circ U\,. 
+% \end{equation}
+As a weaker form of equivariance, we say a  registration algorithm is \textcolor{green!25!black}{$[U, U]$ equivariant} if correspondence is preserved when the images are warped \emph{together}, \ie,
+\begin{tcolorbox}[top=-2mm,bottom=0mm,boxsep=1mm,colback=green!5!white,colframe=green!25!black]
+	\begin{align}
+		& \forall\ U \!\in \mathcal{T}: \label{eqn:UUequiv}  \\
+        & \Phi\left[\ia \circ U, \ib \circ U\right] = U^{-1} \circ \Phi\left[\ia, \ib\right] \circ U\,. \notag
+	\end{align}
+\end{tcolorbox}
+\noindent
+From our analysis (see Sec.~\ref{sec:diff_to_diff_registration}), it will be clear that both definitions are well justified.
+
+%\subsection{Definitions specific to our algorithm. \textcolor{blue}{This section probably belongs somewhere else.}}
+%
+%A Coordinate Attention block is a standard attention block where the Keys come from a feature embedding of the fixed image, the Queries come from a feature embedding of the moving image, and the Values are the (x, y z) coordinates of the voxels in the fixed image
+%
+%$\Xi$ is the continuous, symbolic solution to the diffeomorphism-diffeomorphism registration problem
+%
+%$\Xi_\mathcal{F}$ is a coordinate attention block with standard transformer positional embedding used to encode the fixed and moving images. In the limit of high resolution, this is equal to $\Xi$: the same input image pair will produce the same output transform. %$\Xi_\mathcal{F}$ will only produce a diffeomorphism when the images it is applied to are diffeomorphisms.
+%
+%$\Xi_\theta$ is a coordinate attention block with a deep neural network used to encode the fixed and moving images
+%
+%$\Psi$ is a voxelmorphlike displacement predicting convnet.
+%
+%Our overall approach is (Coordinate Attention with Refinement Layers)
+%\begin{equation} CARL := TS\{DS\{DS\{\Xi_\theta\}\}, TS \{DS \{\Psi_1\}, \Psi_2 \} \} \end{equation}
+%
+\vspace{-0.1cm}
+\section{Related work}
+\label{section:related_work}
+
+We review related work at the intersection of equivariance (and how to achieve it) and image registration, as well as previous work on unsupervised learning of neural networks for image registration.
+
+\vskip0.5ex
+\noindent
+\textbf{Equivariant encoders.}
+%The literature has a wonderful diversity of equivariant feature encoders. 
+The most impactful equivariant layers in the field of neural networks have been ordinary convolution \cite{fukushimaneocognitronbc} and attention \cite{parikh-etal-2016-decomposable}, which are equivariant to translation and permutation,  respectively. In this work, we focus on using attention and convolution to make a registration algorithm that is by construction $[W, U]$ equivariant to translation. However, there are also more recent approaches to create components with additional geometric equivariances such as to rotation. These include group equivariant convolution
+\cite{cohen2016group}, StyleGAN's equivariant convolution \cite{karras2021alias}, and spherical harmonic convolution \cite{moyer2021equivariant}. These
+should be explored in future work to expand the deformations with respect to
+which our approach (based on what we call \emph{coordinate attention}, see Sec.~\ref{sec:coordinate_attention_block})  is $[W, U]$ equivariant.
+
+\vskip0.5ex
+\noindent
+\textbf{Keypoint-based equivariant registration architectures.}
+Several registration approaches relying on keypoint matching have been proposed~\cite{Lowe2004DistinctiveIF, SURF}. Notably, any approach that aligns keypoints to keypoints using a least squares fit is $[W, U]$ equivariant to rigid motions if the keypoint selectors and descriptors are equivariant to rigid motions. The reason can be derived from the notion of equivariance as follows: \emph{if two points correspond before warping the input images, they should correspond afterwards}. The keypoints align with each other before and after a warp is applied, and move with features on the input images when they are warped. SURF \cite{SURF} and related methods fall under this category in the subfield of non-learning-based 2D image alignment. For medical image registration, learning-based approaches that leverage keypoints include EasyReg \cite{iglesias2023ready}, KeyMorph \cite{Yu22a}, SAME++ \cite{Tian2023SAMEAS} and E-CNN \cite{billot2023equivariant}.
+SAME++ \cite{Tian2023SAMEAS} uses a pretrained foundation model as a convolutional encoder, and extracts matched keypoints from it using methods traditionally used in 2D image feature alignment, such as checking for cycle consistency. This alignment is then refined using a trained deep network with overall strong performance on lung, abdomen, and head/neck computed tomography (CT) registration tasks.
+EasyReg, E-CNN and KeyMorph achieve equivariant registration by locating a fixed set of keypoints in each image and aligning matching keypoints.
+EasyReg's \cite{iglesias2023ready} affine pre-registration is by construction $[W,U]$ equivariant to affine deformations because it works by segmenting the brain images to be registered, and then bringing the centroids of the segmented regions into alignment. In effect, this uses each segmented region as a keypoint. In our experiments (see Sec.~\ref{sec:experiments}) we will see that this strategy works well even for out-of-distribution translations, and exhibits strong performance when detailed segmentations are available for training. In the KeyMorph work of \cite{Wang2023ARA}, equivariance is achieved in an unsupervised setting by learning to predict keypoints in brain images. Unlike SURF and related approaches, KeyMorph avoids the need for a matching step by predicting keypoints in a fixed order. Finally, in the E-CNN work of \cite{billot2023equivariant}, the authors leverage a rotationally equivariant encoder built using spherical harmonics to predict features, and the centers of mass of each feature channel are then used as keypoints and rigidly aligned in a differentiable manner. The network is trained by warping a single image with two different transforms and then penalizing the difference between the network output and the transform used to generate the pair.
+
+%Unlike existing methods, we in some sense have a dense collection of keypoints instead of sparse: this means we don't have to pick a transformation model on top of them. (KeyMorph has 128 keypoints, Same++ has <5000, we have ~80,000)
+
+\vskip0.5ex
+\noindent
+\textbf{Equivariance losses.} Several works aim for equivariance via suitably designed loss terms. In the CoMIR work of \cite{Nordling2023ContrastiveLO}, \eg, the authors train an image encoder to be equivariant to rotations and deformations using an unsupervised contrastive loss with additional constraints.
+%, and then use those encoder features within a loss to numerically optimize B-Spline or affine transforms to perform alignment. 
+%They achieve strong performance on 2-D image registration problems, especially in multimodal settings. %discusses equivariant image representations heavily. Could be good to
+%compare against. Is by far the most influential existing equivariant
+%registration work. 
+%In \cite{Honkamaa2022DeformationEC} a registration network is trained as part of an image synthesis network that is made equivariant by losses. % We probably do not need to cite this, tangentially relevant.
+Furthermore, the concept of $W$-bipath consistency, introduced in \cite{Truong_2021_ICCV}, is effectively a penalty to encourage $[W, U]$ equivariance with respect to B-Spline transforms. In particular, \cite{Truong_2021_ICCV} uses penalties to enforce that $\Phi[\ia, \ib \circ U] = \Phi[\ia, \ib] \circ U$ as well as inverse consistency, which together are sufficient conditions for $[W, U]$ equivariance. %While this is undoubtedly useful for training (as it is equivariance enforced by a loss), it is not likely to hold for out-of-distribution data, unlike our approach which is \emph{by construction} $[W,U]$ equivariant.% (see Sec.~\ref{sec:experiments}). 
+%They achieve strong performance in the setting of 2-D natural images.
+
+%\subsection{Inverse Consistency}
+%
+%The most popular equivariance of registration to exploit is of course an equivariance
+%with respect to the order 2 finite group, specifically inverse consistency (of course, it is not normally thought of as such). There has been
+%rapid progress recently in moving from algorithms that are inverse consistent
+%via a penalty \cite{zhang2018inverse, tian2022} to algorithms
+%that are inverse consistent as a consequence of their architecture
+%\cite{greer2023inverse, asymreg, iglesias2023ready}. Our approach,
+%while [W, U] equivariant to translation by construction, is only approximately inverse
+%consistent by a penalty: specifically we use the GradICON regularizer
+%\cite{tian2022} to strongly encourage both regularity and inverse consistency.
+
+\vskip0.5ex
+\noindent
+\textbf{Unsupervised image registration.}
+In addition to prior work on equivariance, we also build on research into unsupervised image registration. The foundational concept~\cite{balakrishnan2019voxelmorph} driving this subfield is to predict deformations using a neural network. Training minimizes a similarity and a regularity loss. It is feasible to learn multiple steps of registration by simply penalizing the final similarity and regularity~\cite{shen2019networks, greer2021icon, tian2022}, even when the steps have different transform models~\cite{greer2023inverse, shen2019networks}. Diffeomorphisms can be guaranteed by special vector field integration layers~\cite{dalca2018unsupervised}, inversion layers~\cite{asymreg} or \emph{encouraged} by a loss, such as diffusion \cite{balakrishnan2019voxelmorph, shen2019networks}, or inverse consistency \cite{greer2021icon, tian2022}. Accuracy can be improved by learning features, computing cost volumes from the similarity between features in the fixed and moving images, and predicting a transform based on this cost volume~%: the final image similarity then is sufficient to learn good features~
+\cite{mok2020large}.
+From this subfield we adopt most of GradICON~\cite{tian2022,tian2024unigradicon,demir2024multigradicon}: we use their loss and regularity hyperparameters to produce approximately diffeomorphic transforms, adopt their learning rate and multi-step, multi-resolution approach, and use their U-Net architecture for the \emph{refinement layers} of CARL. While replacing \emph{Step 1} of their approach with our custom architecture $\Xi_\theta$ might appear minor, it has profound consequences which we will work out in Secs.~\ref{sec:diff_to_diff_registration}-\ref{sec:two_step_registration}. In short, this replacement makes the entire network $[W, U]$ equivariant with respect to translation, whereas GradICON and most of the convolution-based deep registration networks only provide the weaker $[U, U]$ equivariance.
+%The fundamental difference is that voxelmorph-like architectures have a structual prior for smoothness and hve to elarn corres[pondence from data, we have a structural prior for correspondence and have to learn smoothness form data
+
+\section{Registering vector-valued images that are restricted to be diffeomorphisms}
+%problem and its solution $\Xi$}
+\label{sec:diff_to_diff_registration}
+
+%IF one had a true registration model, then as you warp input images, this is how the deformation would have to change to preserve correspondences
+
+%For a specific registration problem, we do have the oracle, whicih allows us to learn properties of the oracle
+
+%On the other hand, if in practice we don't have this correspondencing preserving property, then when we see images framed differently by different scanning protocols from the training dataset, registration fails.
+
+In Sec.~\ref{section:notation}, we defined equivariance for registration as preserving the correspondence between points in the images if they are warped before being registered. To obtain a mathematical definition, we investigate a specific class of images $\ia$ and $\ib$ where the correspondence is well defined: we let them have $[0, 1]^D$ as their domain and range, and require them
+to be \emph{diffeomorphisms}. While this restricted problem does not
+correspond to a real-world medical registration task, it allows a closed
+form solution, yielding insights that can be carried back to real registration problems where finding correspondences is not trivial. Because $\ia$ is \emph{invertible}, we can make
+Eq.~\eqref{registration_problem_statement} an \emph{equality} and then solve for the
+registration algorithm, which we denote as $\Xi$:
+\begin{equation}
+	\begin{split}
+		\ia \circ \Xi\left[\ia, \ib\right]                                   & = \ib                       \\
+		\Leftrightarrow \left(\ia\right) ^{-1} \circ \ia \circ \Xi\left[\ia, \ib\right] & = \left(\ia\right) ^{-1} \circ \ib     \\
+		\Leftrightarrow  \Xi\left[\ia, \ib\right]                            & = \left(\ia\right) ^{-1} \circ \ib\,.
+	\end{split}
+\end{equation}
+Since $\ia$ and $\ib$ are images, and for these images $\Xi$ is correct, a hypothetical registration algorithm that registers any pair of images correctly
+will output the same transforms as $\Xi$ in situations where $\Xi$ is valid,
+and hence will tend to share the equivariances of $\Xi$. In particular, $\Xi$ is equivariant to the group $\text{Diff}(\real^N) \times \text{Diff}(\real^N)$ as follows. Let $U$ and $W$ be arbitrary members of $\text{Diff}(\real^N)$ (diffeomorphisms), then
+we obtain the following commutative diagram:
+\begin{equation}
+\label{eqn:equivarianceproperty}
+	\begin{tikzpicture}[baseline=(current  bounding  box.center),scale=0.78, transform shape,node distance=.7 cm and 4.5cm, auto,
+		every edge/.style={draw, -{Stealth[length=2mm]}, thick}]
+		% Nodes
+		\node (tl) {$(I^\text{M}, I^\text{F})$};
+		\node (tr) [right=of tl] {$(I^\text{M} \circ W, I^\text{F} \circ U)$};
+		\node (bl) [below=of tl] {$(I^M)^{-1} \circ I^F$};
+		\node (br) [below=of tr] {$W ^{-1} \circ (I^M)^{-1} \circ I^F \circ U$};
+
+		% Edges
+		\draw (tl) edge node[above] {$x, y \mapsto x \circ W, y \circ U$} (tr);
+		\draw (tl) edge node[left] {$\Xi$} (bl);
+		\draw (tr) edge node[right] {$\Xi$} (br);
+		\draw (bl) edge node[below] {$\varphi \mapsto W^{-1} \circ \varphi \circ U$} (br);
+	\end{tikzpicture}
+\end{equation}
+\noindent
+Now, if we have a new registration algorithm $\Phi$, a class of input images and potential transforms, we can check if that particular network is equivariant by checking if for all $W$, $U$ a diagram matching \ref{eqn:equivarianceproperty} holds (if so, the registration algorithm is $[W,U]$ equivariant w.r.t. diffeomorphisms):
+\begin{equation}
+	\begin{tikzpicture}[baseline=(current  bounding  box.center),scale=0.78, transform shape,node distance=.7 cm and 4.5cm, auto,
+		every edge/.style={draw, -{Stealth[length=2mm]}, thick}]
+
+		% Nodes
+		\node (tl) {$(I^\text{M}, I^\text{F})$};
+		\node (tr) [right=of tl] {$(I^\text{M} \circ W, I^\text{F} \circ U)$};
+		\node (bl) [below=of tl] {$\Phi[I^M , I^F]$};
+		\node (br) [below=of tr] {$W ^{-1} \circ \Phi[I^M , I^F] \circ U$};
+
+		% Edges
+		\draw (tl) edge node[above] {$x, y \mapsto x \circ W, y \circ U$} (tr);
+		\draw (tl) edge node[left] {$\Phi$} (bl);
+		\draw (tr) edge node[right] {$\Phi$} (br);
+		\draw (bl) edge node[below] {$\varphi \mapsto W^{-1} \circ \varphi \circ U$} (br);        \draw (bl) edge node[above] {{\color{blue}?}} (br);
+	\end{tikzpicture}
+\end{equation}
+In other words, if the registration algorithm results in $\varphi$ for registering $I^{\text{M}}$ to $I^\text{F}$, then it needs to be constructed such that it results in $W^{-1}\circ\varphi\circ U$ if images $I^{\text{M}}$ and $I^{\text{F}}$ are warped by $W$ and $U$, respectively. In that case, $W$ and U will not change the image correspondences.
+%We say that a registration algorithm is [W, U] equivariant with respect to
+%diffeomorphisms if it obeys that diagram. 
+
+\vskip1ex
+In practice, we will often restrict the group from which $W$ and $U$ may be chosen. For example, if for a registration algorithm
+$\Phi$, for any translations $W$ and $U$, $\Phi[\ia \circ W, \ib \circ U] =
+	W^{-1} \circ \Phi[I^M, I^F] \circ U$, we say that the algorithm $\Phi$ is $[W, U]$
+equivariant with respect to translations.
+
+\vskip1ex
+Finally, we remark that some registration algorithms
+are only equivariant for applying the same transform to both images; that is,
+for any transform $U$ from a group of transforms $\mathcal{T}$, $\Phi[\ia \circ
+		U, \ib \circ U] = U^{-1} \circ \Phi[I^M, I^F] \circ U$. We say that such an
+algorithm is $[U, U]$ equivariant with respect to $\mathcal{T}$. This justifies the definitions we previewed in Sec.~\ref{section:notation}.
+%From a practical perspective, a $[U,U]$ equivariant registration network will preserve correspondences under the \emph{same} transformations for the source and target images. Whereas, $[W,U]$ is more general and allows different deformations for the source and target images. In both cases, we know that the resulting map produced by the registration network changes such that spatial point correspondences between images are preserved.
+
+\section{Coordinate attention}
+%$\Xi_\theta$: a coordinate attention block than can handle real images}
+\label{sec:coordinate_attention_block}
+
+Our central contribution when seeking to realize $[W,U]$ equivariance is what we call \emph{coordinate attention}, \ie, a standard attention block where the value vectors are the coordinates of each voxel. This has the effect of computing the center of mass of the attention mask associated with each query. %, and allows this center of mass computation to be performed using highly optimized kernels, such as flash attention \cite{dao2022flashattention}. 
+As an illustrative example in Appendix \ref{subsection:xinetimplementation}, we use coordinate attention to solve the diffeomorphism-to-diffeomorphism registration problem.
+
+
+
+\begin{figure}
+	\centering
+	%\includegraphics[width=.94\columnwidth]{Xi_real_rk.pdf}
+	\includegraphics[width=.99\columnwidth]{Xi_theta.drawio.pdf.drawio.pdf}
+	\caption{Architecture of $\Xi_\theta$. The specific arrangement of pads and crops allows voxels to be mapped to points outside of $\Omega$ -- this is necessary to represent translation. 
+		%$\Xi_\theta$ is similar to $\Xi_\mathcal{F}$ from Fig. \ref{xinet} but the pointwise sinusoidal embedding is replaced by a convolutional encoder. This restricts the class of transforms with respect to which $\Xi_\theta$ is equivariant: while the pointwise sinusoidal embedding of intensity used in $\Xi_\mathcal{F}$  is equivariant to arbitrary diffeomorphisms, the chosen convolutional network in $\Xi_\theta$ is only forced to be equivariant to translations. With this change, there is no longer a requirement that the input images are diffeomorphisms.
+	}
+	\label{fig:xitheta}
+\end{figure}
+
+\vskip0.5ex
+For registering medical images, we use an architecture we call $\Xi_\theta$, a combination of coordinate attention with a feature encoder consisting of convolutional layers all operating at the same resolution, some of which are dilated. The encoder is exactly equivariant to integer pixel translations.
+%and so coordinate attention with this convolutional encoder, which we call $\Xi_\theta$, is $[W, U]$ equivariant with respect to integer translation where $\Xi_\mathcal{F}$ was to arbitrary diffeomorphisms. 
+Edge effects are reduced by padding with zeros before running
+images through the feature encoder, and cropping afterwards. The architecture is illustrated in Fig.~\ref{fig:xitheta}. %\textcolor{blue}{(rk: integer)}
+%By turning images into features using a translationally equivariant network such as stylegan3's alias free convolution, the resulting network is [W, U] equivariant with respect to translation. If we use a rotationally equivariant network such as spherical harmonic convolution, the resulting registration algorithm is [W, U] equivariant with respect to rigid motions.
+It is important that the coordinate attention formulation, which is ``center of mass of $\text{softmax}(QV^\top)$'', can be computed using a standard attention operation instead of a custom set of operations on all pairs of feature vectors. Attention has heavily optimized implementations such as
+flash attention~\cite{dao2022flashattention} that only require $\mathcal{O}$(\#voxels) memory and have excellent
+cache coherency. While flash attention is $\mathcal{O}$(image side length$^6$),
+in practice performance is adequate
+%\footnote{Approximately 2.5 trillion operations} 
+in our setting when $\Xi_\theta$ is applied to a volume of size $43 \times 43 \times 43$,
+which is sufficient for coarse registration. We will show (in Sec.~\ref{twostepproof}) that it is then possible to
+add fine-grained registration while preserving $[W, U]$ equivariance. 
+\section{Equivariance of Coordinate Attention with convolutional encoders (\texorpdfstring{$\Xi_\theta$)}{XiTheta}}
+\label{sec:wuproof}
+We assume that the attention mask associated with each query vector has small spatial
+support. Finding a training procedure that reliably fulfilled this assumption across different datasets was nontrivial: we find that this assumption is satisfied after regularizing the  network end-to-end with diffusion
+regularization for the first several epochs, and using GradICON regularization thereafter. %This is a crucial empirical result that will be a subject of future research and analysis.
+
+We assume that the feature encoders are translation equivariant like
+\begin{equation}
+	\convo_\theta(I \circ U) = \convo_\theta(I) \circ U
+	\label{convdef}\,.
+\end{equation}
+With these assumptions, we prove that $\Xi_\theta$ is $[W, U]$ equivariant to translations below.
+
+Without positional embeddings or causal masking, (we do not use
+either) the attention mechanism is equivariant to permutations as follows: for $P_1, P_2$ permutations; and the output and $K$ (Key), $Q$ (Query), and $V$ (Value) inputs represented each as a function from an index to a vector, and an attention block represented as $\mathbb{T}$,
+\begin{equation} \mathbb{T}[K \circ P_1, Q \circ P_2, V \circ P_1] = \mathbb{T}[K, Q, V] \circ P_2\,. \label{transperm}\end{equation}
+Additionally, because the attention weights in an attention block sum to 1, for an affine function $f$, we have 
+\begin{equation}\mathbb{T}[K, Q, f\circ V] = f \circ \mathbb{T}[K, Q, V]\,. \label{transaff}\end{equation}
+A translation $W$ by an integer number of voxels is both affine when seen as an operation on coordinates, $W_{x \mapsto x + r}$, and a permutation of the
+voxels when seen as an operation on voxel images $W_{\text{permutation}}$ (as long as we can neglect boundary effects). The map from indices to coordinates, $\text{coords}$, serves as the bridge between these two representations of a transform ($W_{x \mapsto x + r} \circ \text{coords} = \text{coords} \circ W_{\text{permutation}})$. As long as the attention masks have small spatial support, we can suppress boundary effects by padding with zeros before applying the operation. So, for translations $W$ and $U$, we have
+\[\Xi_\theta[ I^M, I^F] :=\mathbb{T}[\convo_\theta (I^M ) , \convo_\theta(I^F), \text{coords}]\enspace, \]
+from which we establish that $\Xi_\theta$ is $[W, U]$ equivariant with respect to translation as follows: 
+\begin{equation}
+	\begin{split}
+       %& \Xi_\theta[ I^M, I^F] :=\mathbb{T}[\convo_\theta (I^M ) , \convo_\theta(I^F), \text{coords}]          \\
+       %& \text{and then}
+       %\\
+		& \Xi_\theta[ I^M \circ W, I^F \circ U]  \\
+        & =\mathbb{T}[\convo_\theta (I^M \circ W) , \convo_\theta(I^F \circ U), \text{coords}]          \\
+		& \stackrel{\eqref{convdef}}{=} \mathbb{T}[\convo_\theta (I^M) \circ W , \convo_\theta(I^F) \circ U, \text{coords}] \\
+		& \stackrel{\eqref{transaff}}{=} W^{-1} \circ \mathbb{T}[\convo_\theta (I^M) \circ W, \convo_\theta(I^F) \circ U, W \circ \text{coords}] \\
+		& = W^{-1} \circ \mathbb{T}[\convo_\theta (I^M) \circ W, \convo_\theta(I^F) \circ U, \text{coords} \circ W]  \\
+		& \stackrel{\eqref{transperm}}{=} W^{-1} \circ \mathbb{T}[\convo_\theta (I^M), \convo_\theta(I^F) \circ U, \text{coords}] \\
+		& \stackrel{\eqref{transperm}}{=}  W^{-1} \circ \mathbb{T}[\convo_\theta (I^M), \convo_\theta(I^F), \text{coords}] \circ U \\
+		& =  W^{-1} \circ \Xi_\theta[ I^M , I^F] \circ U\,.
+	\end{split}
+\end{equation}
+The same argument can also be applied to $[W, U]$ equivariance to axis aligned $\pi$ or $\frac{\pi}{2}$ rotations, provided that $\convo_\theta$ is replaced with an appropriate rotation equivariant encoder.
+
+
+
+\subsection{\texorpdfstring{$[U, U]$}{[U,U]} equivariance}
+\label{sec:uu_equivariance}
+So far, we have pointed out that $\Xi_\theta$ is $[W, U]$ equivariant to translation. Our next goal is to show that our full approach, \emph{Coordinate Attention with Refinement Layers} (CARL), is also $[W, U]$ equivariant to translation. To this end, we (1) show that VoxelMorph-like networks are $[U, U]$ equivariant to translation as they predict displacements, and then (2) show that a multi-step registration algorithm where the first step is $[W, U]$ equivariant and subsequent steps are $[U, U]$ equivariant is overall $[W, U]$ equivariant. Notably, any all-convolutional network is translationally equivariant% as can be seen from the following diagram
+\footnote{At
+	least, for translations of integer multiples of the least common multiple of all convolution
+	strides, and considering the input and output of the convolution to be
+	functions.}:
+\begin{equation}
+	\begin{tikzpicture}[baseline=(current  bounding  box.center),scale=0.9, transform shape,node distance=.7cm and 4.5cm, auto,
+		every edge/.style={draw, -{Stealth[length=2mm]}, thick}]
+		% Nodes
+		\node (tl) {$X$};
+		\node (tr) [right=of tl] {$\tilde{X}$};
+		\node (bl) [below=of tl] {$\phantom{\hat{Y}}$$Y$\hspace{-0.2cm} $\phantom{\hat{Y}}$};
+		\node (br) [below=of tr] {$\tilde{Y}$};
+		% Edges
+		\draw (tl) edge node[above] {$f \mapsto f \circ U$} (tr);
+		\draw (tl) edge node[left] {$\text{Conv}_\theta$} (bl);
+		\draw (tr) edge node[right] {$\text{Conv}_\theta$} (br);
+		\draw (bl) edge node[below] {$f \mapsto f \circ U$} (br);
+	\end{tikzpicture}
+	\label{eqn:convequi}
+\end{equation}
+To apply a convolutional network to registration, first it is made to have two inputs by channel-wise concatenation (cat), and it is chosen to have $D$ output channels. Its output can then be interpreted (via interpolation) as a function from the domain of the input images to $\mathbb{R}^N$. If used to predict coordinates, this has a different equivariance than $[U, U]$ equivariance: to be $[U, U]$ equivariant with respect to translation, a registration algorithm needs to have a bottom arrow $f \mapsto U^{-1} \circ f \circ U$ where Eq.~\eqref{eqn:convequi} has $f \mapsto f \circ U$. This is ameliorated in Quicksilver~\cite{yang2017quicksilver}, VoxelMorph~\cite{balakrishnan2019voxelmorph} and their successors by predicting displacements instead of coordinates. Overall, in VoxelMorph we have
+\begin{equation}
+	\Phi_\theta[\ia, \ib](\vec{x}) := \text{Conv}_\theta[\text{cat}(\ia, \ib)](\vec{x}) + \vec{x}\enspace,
+\end{equation}
+and by parameterizing our translation transform $U$ by a vector $\vec{r}$, we can compute
+\begin{equation}
+	\begin{split}
+		\Phi_\theta&[\ia  \circ U, \ib \circ U](\vec{x}) \\ &= \text{Conv}_\theta[\text{cat}(\ia \circ U, \ib \circ U)](\vec{x}) + \vec{x}                       \\
+		&= \text{Conv}_\theta[\text{cat}(\ia, \ib) \circ U](\vec{x}) + \vec{x}      \\
+		&= \left(\text{Conv}_\theta[\text{cat}(\ia, \ib)] \circ U\right)(\vec{x}) + \vec{x}                  \\
+		&= \text{Conv}_\theta[\text{cat}(\ia, \ib)](U(\vec{x})) + \vec{x}                         \\
+		& = \text{Conv}_\theta[\text{cat}(\ia, \ib)](U(\vec{x})) + (\vec{x} + \vec{r}) - \vec{r}              \\
+		&= U^{-1} \circ \left(\text{Conv}_\theta[\text{cat}(\ia, \ib)](\vec{x}) + \vec{x} \right) \circ U  \\ &= U^{-1} \circ \Phi_\theta[\ia, \ib](\vec{x}) \circ U\enspace.
+	\end{split}
+\end{equation}
+%Hence, we see that predicting displacement fields results in $[U,U]$ equivariance while predicting coordinates would not.
+\subsection{Two-step registration}
+\label{sec:two_step_registration}
+\label{twostepproof}
+Multi-step registration is common practice, often using multiple algorithms. For example, ANTs \cite{avants2008symmetric} by default performs affine, then deformable registration, and returns the composition of the resulting transforms. Greer \etal~\cite{greer2021icon} propose a general notation for this scheme: the TwoStep operator, which takes as input two registration algorithms, and yields a composite algorithm as follows:
+\begin{align}\text{TwoStep}&\{\Phi, \Psi\}[I^M, I^F] \nonumber \\ &= \Phi[I^M, I^F] \circ \Psi[I^M \circ \Phi[I^M, I^F], I^F]\,.\end{align}
+%Assertion: if $\Phi$ is equivariant to transforming $I^M, I^F \rightarrow I^M \circ W, I^F \circ U$ (henceforth [W, U] equivariant) and $\Psi$ is equivariant to transforming $I^M, I^F \rightarrow I^M \circ U, I^F \circ U$ (henceforth [U, U] equivariant) for U and W from a class of transforms $\mathcal{T}$, then $TwoStep\{\Phi, \Psi\}$ is $[W, U]$ equivariant
+We show that if $\Phi$ is $[W, U]$ equivariant and $\Psi$ is $[U, U]$ equivariant for $U,W$
+from a class of transforms $\mathcal{T}$, then $\text{TwoStep}\{\Phi, \Psi\}$ is
+$[W, U]$ equivariant. In particular, application of the definition of $\Phi$ being $[W, U]$ equivariant, see Eq.~\eqref{eqn:WUequiv}, and $\Psi$ being $[U, U]$ equivariant, see Eq.~\eqref{eqn:UUequiv}, yields
+\begin{equation}
+	\begin{split}
+		& \text{TwoStep}\{\Phi, \Psi\}[I^M \circ W, I^F \circ U]  \\                 
+		& \vspace{0.5cm}= \Phi\left[I^M \circ W, I^F \circ U\right] \circ \\
+        & \vspace{0.5cm}\phantom{=~} \Psi\left[I^M \circ W \circ \Phi[I^M \circ W, I^F \circ U], I^F \circ U\right] \\
+        & \vspace{0.5cm}\stackrel{\eqref{eqn:WUequiv}}{=} W^{-1} \circ \Phi[I^M, I^F] \circ U \circ \\
+        & \vspace{0.5cm}\phantom{=~} \Psi\left[I^M \circ \Phi[I^M, I^F] \circ U, I^F \circ U\right] \\
+        & \vspace{0.5cm}\stackrel{\eqref{eqn:UUequiv}}{=} W^{-1} \circ \Phi[I^M, I^F] \circ \\ 
+        & \vspace{0.5cm}\phantom{=~} \Psi\left[I^M \circ \Phi[I^M, I^F], I^F\right] \circ U \\
+        &  \vspace{0.5cm}=W^{-1} \circ \text{TwoStep}\{\Phi, \Psi\}[I^M, I^F] \circ U\enspace.
+    \end{split}
+\end{equation}
+% \begin{equation}
+% 	\begin{split}
+% 		& \text{TwoStep}\{\Phi, \Psi\}[I^M \circ W, I^F \circ U]                                                                        \\
+% 		& = \Phi[I^M \circ W, I^F \circ U] \\&\circ \Psi\left[I^M \circ W \circ \Phi[I^M \circ W, I^F \circ U], I^F \circ U\right] \\
+% 		%& = W^{-1} \circ \Phi[I^M, I^F] \circ U \circ  \Psi\left[I^M \circ W \circ W^{-1} \circ \Phi[I^M, I^F] \circ U, I^F \circ U\right]
+%         &\text{(apply definition of $\Phi$ being [W, U] equivariant)}\\
+% 		& = W^{-1} \circ \Phi[I^M, I^F] \circ U \circ \Psi\left[I^M \circ \Phi[I^M, I^F] \circ U, I^F \circ U\right]            \\
+% 		%& = W^{-1} \circ \Phi[I^M, I^F] \circ U \circ U^{-1} \circ \Psi\left[I^M \circ \Phi[I^M, I^F], I^F\right] \circ U                                                        \\
+%         &\text{(apply definition of $\Psi$ being [U, U] equivariant)}\\
+% 		& = W^{-1} \circ \Phi[I^M, I^F] \circ \Psi\left[I^M \circ \Phi[I^M, I^F], I^F\right] \circ U                            \\
+% 		& = W^{-1} \circ \text{TwoStep}\{\Phi, \Psi\}[I^M, I^F] \circ U\enspace.
+% 	\end{split}
+% \end{equation}
+%Therefore, $\text{TwoStep}\{\Phi, \Psi\}$ is $[W, U]$ equivariant. 
+This construction can be applied recursively for an $N$-step $[W, U]$ equivariant network, and can be combined with the downsampling operator (abbreviated as Down) from \cite{tian2022} (see Appendix \ref{downsample}) to make the early stages operate at coarse resolution and subsequent ones at higher resolutions.
+
+%\subsection{Resolution constraints}
+%In 3D, the Equitrans network has computational complexity O(resolution \^6 ), and so can only operate on images up to around 40 x 40 x 40 in 3D, while VoxelMorph-like networks have complexity O(resolution \^3) and so can operate on high resolution medical images, in practice up to ~200 x 200 x 200. Therefore, this hybrid network provides a method for creating a [W, U] equivariant network that operates on 200 x 200 x 200 images, a capacity that would otherwise not be possible.
+
+\section{Experiments}
+\label{sec:experiments}
+\noindent
+\textbf{Architecture.} We propose the architecture \emph{Coordinate Attention with Refinement Layers} (CARL),
+\begin{tcolorbox}[top=0mm,bottom=0mm,boxsep=1mm,colback=red!5!white,colframe=red!75!black]
+	\begin{align}
+		\text{CARL}   & :=\text{TwoStep}\{\text{TwoStep}\{ \text{Down}\{ \text{TwoStep} \{ \nonumber \\
+		              & \text{Down} \{  \Xi_\theta\}\}, \Psi_1\}\}, \Psi_2 \nonumber                 \\
+		\}, \Psi_3 \} &
+		\label{eqn:CARL}
+	\end{align}
+\end{tcolorbox}
+\noindent
+where $\Xi_\theta$ is a $[W, U]$ equivariant neural network composed of a
+translation-equivariant feature encoder and a coordinate attention layer as proposed, and
+$\Psi_i$ are refinement layers: convolutional networks predicting displacements with architecture and feature counts from \cite{greer2021icon, tian2022}, and so are $[U, U]$ equivariant. To facilitate a direct comparison of performance, the specific arrangement of TwoStep and Downsample layers is identical to GradICON: our only change is to replace the lowest resolution displacement predicting network with $\Xi_\theta$. Following the suggestion of GradICON \cite{tian2022}, the final refinement layer $\Psi_3$ is only added after the first 50,000 steps of training. \emph{The overall network is
+	$[W, U]$ equivariant with respect to translation.}
+
+\vskip1ex
+\noindent
+\textbf{Losses.} In all experiments, we train with LNCC image similarity (LNCC=1-local normalized cross correlation). For regularization, we train initially with a diffusion loss for 1,500 steps, \ie,
+\begin{equation}
+\begin{split}
+	\mathcal{L} & = \text{LNCC}\left(I^\text{M} \circ \text{CARL}[\ia, \ib], \ib\right)  \\ &+  \text{LNCC}\left(I^\text{F} \circ \text{CARL}[\ib, \ia], I^\text{M}\right) \\&+ \lambda ||\nabla (\text{CARL}[\ia, \ib]) - \mathbf{I} ||_F^2
+    \end{split}
+\end{equation}
+and then continue training with the GradICON \cite{tian2022} regularizer for 100,000 steps, \ie,
+\begin{equation}
+\begin{split}
+\mathcal{L} & =  \text{LNCC}(I^M \circ \text{CARL}[\ia, \ib], \ib)  \\&+  \text{LNCC}(I^F \circ \text{CARL}[\ib, \ia], I^M)  \\&+ \lambda ||\nabla (\text{CARL}[\ia, \ib] \circ \text{CARL}[\ib, \ia]) - \mathbf{I} ||_F^2\,,
+              \label{gradicon_loss}
+\end{split}
+\end{equation}
+where $\mathbf{I}$ is the identity matrix, and $\lambda>0$.
+We use regularization parameter $\lambda = 1.5$ and an Adam optimizer with a learning rate of 0.0001. We remark that diffusion regularization is needed in early steps of training for stability, but \text{GradICON} delivers superior final regularity and correspondence by strongly forcing the network towards invertibility while still allowing large deformations.
+\vskip1ex
+\noindent
+\textbf{Instance Optimization (IO).} Following GradICON~\cite{tian2022}, we evaluate with and without 50 steps of Instance Optimization, \ie, since our method does not use human annotations at train time, at deployment we can further optimize Eq.~\eqref{gradicon_loss} on instances of test data to improve performance.
+
+\subsection{Deformed retina images}
+\label{retinaexpr}
+We first demonstrate the importance of several details of
+our implementation on a dataset consisting of synthetically warped retina
+segmentations from \cite{tian2022}. In particular, for this experiment,
+we train three network variants:
+\begin{itemize}
+	\item[1)] $\text{TwoStep}\{\text{Down}\{\text{TwoStep}\{\text{Down}\{\Psi_0\},\Psi_1\}\}, \Psi_2 \}$, a multi-step network with each step predicting a displacement field. This is the 1st stage architecture proposed in GradICON~\cite{tian2022}. We expect this network to \emph{not} be $[W, U]$ equivariant w.r.t. translation.
+	\item[2)] $\text{Down}\{\text{Down}\{\Xi_\theta\}\}$, a single-step coordinate attention network . We expect this network to be $[W, U]$ equivariant w.r.t translation, but less powerful than 1).
+	\item[3)] CARL, Eq.~\eqref{eqn:CARL}. We expect this  network to be powerful and $[W, U]$ equivariant to translation.
+\end{itemize}
+Each is assessed \emph{without} instance optimization. To assess differences between these network types, we create three variants of the retina dataset:
+\begin{itemize}
+	\item[1)] {\bf Baseline}. The train
+		set is constructed by warping 14 segmentations from the DRIVE dataset \cite{staal2004ridge}, and the
+		test set is constructed by warping the remaining 6 segmentations, with elastic warp parameters as suggested in~\cite{tian2022}.
+	\item[2)] {\bf Shift}. The same as Baseline, but with fixed images shifted by 200 pixels ($\sim \frac{1}{3}$ of retina diameter).
+	\item[3)] {\bf Scale Shift}. The same as Shift, but with fixed images also scaled to 80\% size (See Fig. \ref{fig:synthetic_experiment}).
+\end{itemize}
+
+\vskip0.5ex
+\noindent
+Results for this experiment are shown in Fig.~\ref{fig:synthetic_experiment}. We see that when training/testing on the \textbf{Baseline} dataset, as expected, all three networks have adequate performance, although the importance of the refinement layers is highlighted when $\text{Down}\{\text{Down}\{\Xi_\theta\}\}$ falls meaningfully behind. When trained and tested on the \textbf{Shift} variant, the equivariant networks succeed, while the displacement predicting network fails. Additionally, we see that the equivariant networks \emph{generalize} to the \textbf{Shift} test dataset when trained only on \textbf{Baseline}. Finally, we see that the equivariant networks also learn on, \emph{and generalize to}, the \textbf{Scale Shift} dataset. This result illustrates an important point that we did not prove but observe empirically: while $\Xi_\theta$ is formally only $[W, U]$ equivariant to integer translations, in practice it is $[W, U]$ equivariant to deformations that are locally approximately translations, such as scaling. We do see a large variance \textbf{between training runs} when training CARL on the \textbf{Shift} and \textbf{Scale Shift} datasets. That is, specifically when training on Shift or Scale Shift, most trained CARL networks have high performance across all test examples, but for a small fraction of training runs, performance is poor across the whole test set.
+
+\begin{figure*}[t!]
+\centering
+\includegraphics[width=1.0\textwidth]{Figures/CVPR_Fig3_rk.pdf}
+\caption{\label{fig:synthetic_experiment}Equivariance allows CARL to generalize out-of-distribution. The \emph{left four images} show the performance of CARL on a test set with the same distribution as the training set, where images are \emph{aligned} in scale and translation. The \emph{middle four images} show generalization to a test set \textbf{Scale Shift} where images are \emph{misaligned} in scale and translation. The \emph{right-most} figure shows the mean Dice distribution on the test set, over multiple training runs.}
+\vskip-0.5em
+\end{figure*}
+
+% \begin{figure}
+% 	\centering
+% 	\includegraphics[width=.8\columnwidth, trim={0cm 0cm 23.2cm 0cm}, clip]{Figures/retina_rk.pdf}\\
+% 	\includegraphics[width=.8\columnwidth, trim={10.5cm 0cm 12.8cm 0cm}, clip]{Figures/retina_rk.pdf}\\
+% 	\includegraphics[width=.8\columnwidth, trim={20.6cm 0cm -.3cm 0cm}, clip]{Figures/retina_rk.pdf}
+% 	%\includegraphics[width=\columnwidth, trim={2cm 1cm 2cm 1cm}, clip]{Figures/038_hard_mode_generalize_make_hybrid_network_after_registration.png}
+% 	%\includegraphics[width=.28\textwidth, trim={2cm 1cm 2cm 1cm}, clip]{Figures/039_hard_mode_generalize_make_hybrid_network_test.png}
+% 	%\includegraphics[width=.4\textwidth]{Figures/000_violin.png}
+% 	\caption{Equivariance allows CARL to generalize out-of-distribution. The \emph{top} figure shows the performance of CARL on a test set with the same distribution as the training set, where images are \emph{aligned} in scale and translation. The \emph{middle} figure shows generalization to a test set \textbf{Scale Shift} where images are \emph{misaligned} in scale and translation. The \emph{bottom} figure shows the mean Dice distribution on the test set, over multiple training runs.
+% 		%There are defects in the transform away from the center of the image which/ can be fixed by increasing the padding.
+% 	}
+% 	\vskip-0.5em
+% \end{figure}
+
+\subsection{Performance comparison to other methods}
+We compare our method to existing approaches from the literature on three datasets. First, we
+evaluate on the 10 DirLab COPDGene test cases as this is a popular and
+difficult lung registration benchmark that allows us to compare our performance to
+diverse and highly optimized methods. Second, we evaluate on the HCP brain
+dataset, which allows us to directly compare to two existing equivariant
+registration methods, EasyReg and KeyMorph. Third, we evaluate on a novel
+registration task: registering images from the Abdomen1k dataset without
+registration-specific preprocessing. This dataset has large translational
+differences and different fields of view, which causes other unsupervised
+registration approaches to converge poorly. Our strong equivariance makes this
+task possible with the LNCC + regularization loss. We aim to present a picture of how our approach will work when applied as specified to new datasets. To this end, \emph{we use the same hyperparameters for all three datasets}.
+
+
+\vskip0.5ex
+\noindent
+\textbf{Lung registration.}
+To evaluate CARL against the current state of the art for general registration, we use the DirLab lung registration task, which is well standardized and has gained considerable attention in the community. In particular, we train on 999 inhale/exhale CT pairs of images from the COPDGene dataset, and evaluate based on landmark distance in the 10 standard DirLab pairs. We follow the data preparation and augmentation suggested in GradICON~\cite{tian2022}. Results are listed in Table~\ref{tab:exp_results}, showing the commonly-used mean target registration error (mTRE) score as well as the percentage of negative values for the Jacobian determinant ($\%|J|_{<0}$), indicative of the number of folds. Performance matches state of the art, exceeded significantly only by PTVReg and RRN which have hyper parameters selected specifically for the 10 challenge cases.%Results marked by (io) indicate an additional \emph{instance optimization} step. 
+
+\vskip1ex
+\noindent
+\textbf{Brain registration.}
+\label{brainreg}
+The existing equivariant registration methods that we compare to are presented as brain registration methods. We compare to them on T1w MRI images from the Human Connectome Project (HCP) dataset~\cite{van2012human,rushmore2022anatomically,rushmore_r_jarrett_2022_dataset}. In detail, we perform evaluation and preprocessing as in \cite{greer2023inverse}, measuring DICE of midbrain structures \ref{fig:box_hcp} and find that CARL yields state-of-the-art performance. We also artificially translate or rotate one image by varying amounts and re-evaluate performance, verifying that GradICON sharply drops in performance under this shift, while our approach and EasyReg are unaffected (see Fig.~\ref{fig:hcp_translation}).
+
+\vskip1ex
+\noindent
+\textbf{Abdomen registration.}
+Abdominal CT-CT datasets can capture the diversity of fields of view of abdominal CT
+scans in clinical practice, and the Abdomen1k~\cite{Abdomen1K9497733} dataset is curated specifically to do so. Since our method is robust to these differences of
+field of view because it is $[W, U]$ equivariant to translation, we showcase its
+performance for inter-subject registration of the Abdomen1K \cite{Abdomen1K9497733} dataset. We train on the first 800 cases of the Abdomen1K dataset, validate on cases 900-1000, and test on cases 800-900. We opt for a minimalist preprocessing: we resample all images to [175, 175, 175]
+\footnote{This leads to nonisometric voxel spacing. We tried isometric voxel spacing, padding with background pixels if necessary, but non-isometric, non padded preprocessing had uniformly better performance}
+and then divide by the maximum intensity. We test by randomly sampling 30 image pairs and then computing the mean Dice score over manual annotations of the liver, kidney, pancreas, and spleen. We report (Appendix, \ref{abdomen_fulldata}) the exact pairs to allow future works to compare to our result. The most important comparison is to {GradICON}, as our final network, similarity and regularity loss are identical to GradICON's except that we  replace the first U-Net based $\Psi$ with our custom $\Xi_\theta$. This change produces a dramatic improvement in non-instance-optimization registration accuracy and an improvement in instance-optimized registration accuracy. Results are listed in Table \ref{tab:exp_results}. We also check whether the model trained on the Abdomen1k dataset generalizes to the Learn2Reg Abdomen CT-CT challenge set \cite{hering2022learn2reg}. We find excellent generalization: performance is better than other unsupervised approaches including the keypoint-based SAME++, but does not match the best supervised methods trained using the Learn2Reg CT-CT training set \emph{and segmentations}.
+
+\begin{table*}[htp]
+	\centering
+	\captionof{table}{Performance comparison on Abdomen1K, HCP, DirLab, and Learn2Reg Abdomen CT-CT dataset.}\label{tab:exp_results}
+	\vskip0.1ex
+	\begin{adjustbox}{width=\textwidth,center}
+		\begin{tabular}{lccp{1em}lccp{1em}lcc}\toprule
+			Method                                                    & $\%$DICE$\uparrow$ & $\%|J|_{<0}\downarrow$ & & Method                                                  & mTRE$\downarrow$ & $\%|J|_{<0}\downarrow$                        & & Method                                                        & $\%$DICE$\uparrow$ & Unsupervised \\ \midrule
+			\multicolumn{3}{c}{\cellcolor[RGB]{205,224,238}Abdomen1K}                                           & & \multicolumn{3}{c}{\cellcolor[RGB]{255,228,206}DirLab}                                                                     & & \multicolumn{3}{c}{\cellcolor{blue!10}L2R Abd. CTCT Test set}                                              \\
+			ANTs~\cite{avants2008symmetric}                           & 45.4           & 0                      & & ANTs~\cite{avants2008symmetric}                         & 1.79             & 0                                             & & ConvexAdam~\cite{siebert2021fast}                             & 69             &                       \\
+			VoxelMorph~\cite{balakrishnan2019voxelmorph}              & 59.3           & -                      & & Elastix~\cite{klein2009elastix}                         & 1.32             & -                                             & & LapIRN~\cite{mok2020large}                                    & 67             &                       \\
+			GradICON~\cite{tian2022}                                  & 49.6           & 7e-1                   & & VoxelMorph~\cite{balakrishnan2019voxelmorph}            & 9.88             & 0                                             & & Estienne~\cite{estienne2021deep}                              & 69             &                       \\
+			GradICON(IO)~\cite{tian2022}                              & 71.0           & 4e-2                   & & LapIRN~\cite{mok2020large}                              & 2.92             & 0                                             & & corrField~\cite{hansen2021graphregnet,heinrich2015estimating} & 49             & yes                             \\
+			ConstrICON~\cite{greer2023inverse}                        & 65.2           & 7e-4                   & & RRN~\cite{he2021recursive}                              & 0.83             & -                                             & & PIMed~\cite{hering2022learn2reg}                              & 49             &                              \\
+			ConstrICON(IO)~\cite{greer2023inverse}                    & 66.8           & 2e-3                   & & Hering el al~\cite{hering2021cnn}                       & 2.00             & 6e-2                                          & & PDD-Net~\cite{heinrich2019closing}                            & 49             &                              \\
+			uniGradICON~\cite{tian2024unigradicon}                    & 43.5           & 9e-1                   & & GraphRegNet~\cite{hansen2021graphregnet}                & 1.34             & -                                             & & Joutard~\cite{hering2022learn2reg}                            & 40             &                              \\
+			uniGradICON(IO)~\cite{tian2024unigradicon}                & 54.8              &    2e-3                   & & PLOSL~\cite{wang2022PLOSL}                              & 3.84             & 0                                             & & NiftyReg~\cite{modat2010fast}                                 & 45             & yes                             \\
+			\textbf{CARL}                                             & 75.7           & 4e-1                   & & PLOSL(IO)~\cite{wang2022PLOSL}                          & 1.53             & 0                                             & & Gunnarsson~\cite{gunnarsson2020learning}                      & 43             &                              \\
+			\textbf{CARL(IO)}                                         & 77.2           & 2e-3                   & & PTVReg~\cite{vishnevskiy2017isotropic}                  & 0.83             & -                                             & & \multicolumn{3}{c}{\cellcolor{blue!10}L2R Abd. CTCT Val. set}                                              \\
+			\multicolumn{3}{c}{\cellcolor[RGB]{208,234,208}HCP}                                                 & & GradICON~\cite{tian2022}                                & 1.93             & 3e-4                                          & & ConvexAdam~\cite{siebert2021fast}                             & 71                                              \\
+			ANTs~\cite{avants2008symmetric}                           & 77.2           & 0                      & & GradICON(IO)~\cite{tian2022}                            & 1.31             & 2e-4                                          & & Estienne~\cite{estienne2021deep}                              & 65                                              \\
+			GradICON~\cite{greer2023inverse}                          & 78.6           & 1e-3                   & & ConstrICON~\cite{greer2023inverse}                      & 2.03             & 7e-6                                          & & Estienne~\cite{estienne2021deep}                              & 52             & yes                            \\
+			GradICON(IO)~\cite{greer2023inverse}                      & 80.2           & 5e-4                   & & ConstrICON(IO)~\cite{greer2023inverse}                  & 1.62             & 3e-6                                          & & SAME++(IO)~\cite{Tian2023SAMEAS}                              & 49             & yes                            \\
+			ConstrICON~\cite{greer2023inverse}                        & 79.3           & 4e-6                   & & uniGradICON~\cite{tian2024unigradicon}                  & 2.26             & 9e-5                                          & & uniGradICON    ~\cite{tian2024unigradicon}                    & 48             & yes                            \\
+			ConstrICON(IO)~\cite{greer2023inverse}                    & 80.1           & 0                      & & uniGradICON(IO)~\cite{tian2024unigradicon}              & 1.40             & 9e-5                                          & & uniGradICON(IO)~\cite{tian2024unigradicon}                    & 52             & yes                            \\
+			uniGradICON~\cite{tian2024unigradicon}                    & 76.2           & 6e-5                   & & \textbf{CARL}                                           & 1.88             & 4e-6                                          & & \textbf{CARL}                                                 & 50             & yes                            \\
+			uniGradICON(IO)~\cite{tian2024unigradicon}                & 78.9           & 2e-4                   & & \textbf{CARL(IO)}                                       & 1.34             & 6e-6                                          & & \textbf{CARL(IO)}                                             & 56             & yes                            \\
+			EasyReg~\cite{iglesias2023ready}                          & 78.8           & -                      & & \multicolumn{3}{c}{\cellcolor{white}}                                                                                      & & \multicolumn{2}{c}{\cellcolor{white}}                                                                           \\
+			KeyMorph~\cite{Yu22a}                                     & 67.2           & 0                      & & \multicolumn{3}{c}{\cellcolor{white}}                                                                                      & & \multicolumn{2}{c}{\cellcolor{white}}       \\
+                        \textbf{CARL}                                             & 79.6           & 6e-3                   & & \multicolumn{3}{c}{\cellcolor{white}}                                                                                      & & \multicolumn{2}{c}{\cellcolor{white}}\\ 
+                        \textbf{CARL(IO)}                                         & 80.4           & 1e-3                   & & \multicolumn{3}{c}{\cellcolor{white}}                                                                                      & & \multicolumn{2}{c}{\cellcolor{white}}\\ 
+                        \textbf{CARL\{ROT\}}                                      & 77.8           & 1e-3                   & & \multicolumn{3}{c}{\cellcolor{white}}                                                                                      & & \multicolumn{2}{c}{\cellcolor{white}}\\ 
+                        \textbf{CARL\{ROT\}(IO)}                                  & 78.9           & 3e-3                   & & \multicolumn{3}{c}{\cellcolor{white}}                                                                                      & & \multicolumn{2}{c}{\cellcolor{white}}\\ 
+   \bottomrule
+		\end{tabular}
+	\end{adjustbox}
+	\vskip-0.1em
+\end{table*}
+
+
+\iffalse
+	\noindent\begin{minipage}{0.4\textwidth}
+		\centering
+		\begin{small}
+			\captionof{table}{Results on Abdomen1k. We outperform existing methods when input images are not approximately aligned in translation due to differing CT fields of view.}
+			\label{tab:abdomen}
+			\begin{tabular}{@{}lcc@{}}
+				\toprule
+				\textbf{Method}                                & \textbf{DICE} & $\%|J|_{<0}$ \\
+				\midrule
+
+				ANTs \cite{avants2008symmetric}                & 45.4          & 0            \\
+				%ANTs Affine + SyNAggro                         & -- & -           \\
+				%ANTs affine alignment using test labels        & -- & -           \\
+				%ANTs affine test prealigned, then SyN          & 51.5 & 0           \\
+				%        LapIRN                                                            \\
+				VoxelMorph \cite{balakrishnan2019voxelmorph}                                  \\
+				GradICON                       \cite{tian2022} & 49.6          & 0.7          \\
+				GradICON (io)                                  & 71.0          & 4e-2         \\
+				ConstrICON \cite{greer2023inverse}             & 65.2          & 7e-4         \\
+				ConstrICON (io)                                & 66.8          & 2e-3         \\
+				CARL -- \textbf{Ours}                          & 74.1          & 0.3          \\
+				CARL (io) -- \textbf{Ours}                     & 75.9          & 4e-3         \\
+				\bottomrule
+			\end{tabular}
+			% \vskip1ex
+		\end{small}
+
+	\end{minipage}\hfill
+	\noindent\begin{minipage}{0.59\textwidth}
+		\centering
+		\begin{small}
+			\captionof{table}{Results on DirLab (lung registration). Our method is comparable to the state of the art on an extremely competitive standard task.}
+			\label{tab:dirlab}
+			\begin{tabular}{@{}lcc|lcc@{}}
+				\toprule
+				\textbf{Method}                              & \textbf{mTRE} & $\%|J|_{<0}$ &
+				\textbf{Method}                              & \textbf{mTRE} & $\%|J|_{<0}$                                                        \\
+				\midrule
+				ANTs    \cite{avants2008symmetric}           & 1.73          & 0            & PLOSL (io)                             & 1.53 & 0    \\
+				Elastix \cite{klein2009elastix}              & 1.32          &              & PTVReg \cite{vishnevskiy2017isotropic} & 0.83 & --   \\
+				VoxelMorph \cite{balakrishnan2019voxelmorph} & 9.88          & 0            & GradICON     \cite{tian2022}           & 1.93 & 3e-4 \\
+				LapIRN     \cite{mok2020large}               & 2.92          & 0            & GradICON (io)                          & 1.31 & 2e-4 \\
+				RRN           \cite{he2021recursive}         & 0.83          &              & ConstrICON \cite{greer2021icon}        & 2.06 & 6e-6 \\
+				Hering \etal      \cite{hering2021cnn}       & 2.00          &              & ConstrICON (io)                        & 1.62 & 3e-6 \\
+				GraphRegNet \cite{hansen2021graphregnet}     & 1.34          & --           & \text{CARL} -- \textbf{Ours}           & 2.58 & 2e-6 \\
+				PLOSL \cite{wang2022plosl}                   & 3.84          & 0            & \text{CARL} (io) -- \textbf{Ours}      & 1.52 & 3e-6 \\
+				\bottomrule
+			\end{tabular}
+			%\vskip1ex
+		\end{small}
+	\end{minipage}
+
+
+	\noindent\begin{minipage}{0.4\textwidth}
+
+		\centering
+		\captionof{table}{Evaluation on HCP of multiple methods }
+		\label{tab:HCP_overall}
+		\begin{tabular}{@{}lcc@{}}
+			\toprule
+			Method                             & DICE & $\%|J|_{<0}$ \\
+			\midrule
+			ANTs \cite{avants2008symmetric}    & 77.2 & 0            \\
+			GradICON \cite{tian2022}           & 78.6 & 1e-3         \\
+			GradICON (io)                      & 80.2 & 5e-4         \\
+			ConstrICON \cite{greer2023inverse} & 79.3 & 4e-6         \\
+			ConstrICON (io)                    & 80.1 & 0            \\
+			EasyReg\cite{iglesias2023ready}    & 78.8 & -            \\
+			KeyMorph \cite{Yu22a}              &      &              \\
+			CARL (ours)                        & 78.8 & 5e-4         \\
+			CARL (io)                          & 80.4 & 3e-4         \\
+			\bottomrule
+		\end{tabular}
+
+	\end{minipage} \hfill
+\fi
+
+
+\begin{figure}[htp]
+	\centering
+	\includegraphics[width=\columnwidth, trim={0cm 0cm 0cm 0.43cm}, clip]{Figures/translating_one_image.pdf}
+	\includegraphics[width=\columnwidth, trim={0cm 0cm 0cm 0.43cm}, clip]{Figures/rotating_one_image.pdf}
+	\caption{HCP evaluation while translating or rotating one image. CARL and EasyReg are unaffected by translation due to $[W,U]$ equivariance, and CARL\{ROT\} is additionally unaffected by rotation. GradICON DICE drops significantly when images are transformed differently due to its $[U,U]$ equivariance.}
+	\label{fig:hcp_translation}
+	\vskip-0.8em
+\end{figure}
+
+\subsection{Rotation equivariance}
+
+Our approach is formally $[W, U]$ equivariant to translations. In addition, we find empirically that it can be made nearly $[W, U]$ equivariant to rotations by data augmentation. The following changes to the training procedure are required: \emph{First}, $\Xi_\theta$ is made formally equivariant to axis aligned $\pi$ rotations by evaluating the encoder four times, once for each possible $\pi$ rotation, and averaging. If the encoder is equivariant in the natural sense to transforms from a class $\mathcal{T}$, then $\Xi_\theta$ becomes $[W, U]$ equivariant to that class as mentioned in \ref{sec:coordinate_attention_block}. \emph{Second}, the receptive field of the encoder is broadened by adding an additional dilated convolution to the residual blocks with dilation 8. This empirically stabilizes training, but slightly damages translational equivariance via increased boundary effects. In addition, we change the extrapolation used when evaluating displacement field transforms at locations outside $[0, 1]$ (see \ref{sec:improved_extrapolation} in the Appendix). This change allows the Jacobian of the final transform to be continuous across this boundary when the displacement field represents a large rotation. \emph{Finally}, the dataset is augmented with random rotations from $\text{SO}(3)$. Because this augmentation requires large rotations to align the images, pretraining with naive diffusion regularization (\ie $\mathcal{L}_\text{reg}(\varphi) = ||\nabla \varphi - \boldsymbol{I}||^2_F$) is no longer appropriate as diffusion forbids transforms with Jacobians far from the identity map. During the pretraining step, it is therefore necessary to apply the diffusion regularizer to $R^{-1} \circ \varphi \circ Q$ instead of $\varphi$, where $R$ and $Q$ are the augmentations applied to the input images and $\varphi$ is the output of the overall architecture. As the network becomes $[W, U]$ equivariant to arbitrary rotations, $\nabla (R^{-1} \circ \varphi \circ Q)$ becomes close enough to the identity matrix for diffusion regularization to be appropriate: see \ref{sec:augmentation}. We refer to CARL trained using this procedure as CARL\{ROT\}. While baseline CARL can handle rotations of up to 45 degrees with instance optimization, CARL\{ROT\} performs correct registration when the input images are arbitrarily rotated (\ref{fig:hcp_translation}).
+
+\subsection{Limitations}
+\label{subsection:limitations}
+%\vspace{-0.1cm}
+
+%While we achieve theoretical and empirical equivariance to translation and empirical equivariance to scale, notably absent from our results are equivariance to rotations. This does not doom CARL, as our driving goal was to accurately register abdominal organs, where the rough rotation is known from the image metadata, and the driving issue is discrepancy in translation. For other areas of application, such as fetal MRI registration as tackled by E-CNN \cite{billot2023equivariant}, translation equivariance is much less important since moments-based initialization works well, and rotational equivariance takes foremost importance as the rough orientation of the fetus with respect to the scanner is initially unknown. Our derivation of $[W, U]$ equivariance to translation (Sec.~\ref{sec:wuproof}) holds for $[W, U]$ equivariance with respect to rotation if $\convo_\theta$ is replaced with a rotation equivariant encoder such as \cite{karras2021alias} or \cite{moyer2021equivariant}, but unlike for translation equivariant encoders, the assumption that attention maps should have small spatial support after training does not hold following any training procedure of a $\Xi_\theta$ with  rotationally equivariant encoders that we have attempted; a dedicated loss to encourage small spatial support may be required.
+
+Registering a pair of images with a forward pass takes 2.1 seconds. Instance optimization (IO) is slower: 209 seconds on an NVIDIA A100 GPU. %, with the majority of this time spent computing flash attention forwards and backwards passes on an 80,000 token sequence
+However, we consider the runtime of IO a minor issue at the moment, and focus on accuracy, as we anticipate that hardware and software for computing the flash attention kernel will continue to improve.
+
+\section{Conclusion}
+We demonstrated that our proposed multi-step architecture has a novel combination of strong equivariance (by construction to translation and optionally for rotation by judicious data augmentation) and precise handling of complex and high-resolution deformations. We show that it has close to SOTA accuracy on lung registration when compared to a competitive leaderboard, SOTA performance on brain registration with empirically verified equivariance to translations and rotations, and significantly improves registration accuracy over previous unsupervised registration approaches for the challenging registration of raw abdomen scans with differing fields of view. %Further, our approach has moderate memory consumption during training and testing ($\sim$25GB and $\sim$14GB respectively) and allows for fast inference.
+
+% WARNING: do not forget to delete the supplementary pages from your submission 
+
